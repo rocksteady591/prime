@@ -4,6 +4,7 @@
 #include <boost/beast/websocket.hpp>
 #include <thread>
 #include <iostream>
+#include "server.h"
 
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -14,62 +15,63 @@ using StringRequest = http::request<http::string_body>;
 using StringResponse = http::response<http::string_body>;
 using namespace std::literals;
 
-void RequestHandler(websocket::stream<tcp::socket>& ws){
-    StringRequest req;
-    beast::flat_buffer buffer;
-    beast::error_code ec;
-    http::read(ws, buffer, req, ec);
-    std::cout << req.method_string() << ' ' << req.target() << std::endl;
-    for(const auto& header : req){
-        std::cout << "  "sv << header.name_string() << ": "sv << header.value() << std::endl;
+
+Session::Session(tcp::socket socket) : ws_(std::move(socket)) {}
+
+void Session::DoRead(){
+    ws_.async_read(buffer_, [self = shared_from_this()](beast::error_code ec, std::size_t){
+        if(ec){
+            return;
+        }
+        self->ws_.async_write(self->buffer_.data(), [self](beast::error_code ec, std::size_t){
+            self->buffer_.consume(self->buffer_.size());
+            if(!ec){
+                self->DoRead();
+            }
+        });
+    });
+}
+
+void Session::Run(){
+    ws_.async_accept([self = shared_from_this()](beast::error_code ec){
+        if(ec){
+            return;
+        }
+        self->DoRead();
+    });
+}
+
+Server::Server(/*size_t threads_count = */) 
+: threads_count_(std::thread::hardware_concurrency()), 
+io_context_(threads_count_), 
+acceptor_(io_context_, tcp::endpoint{tcp::v4(), port_}){}
+
+void Server::do_accept(){
+    acceptor_.async_accept([this](beast::error_code ec, tcp::socket socket){
+        if(!ec){
+            std::cout << "New connection: " << socket.remote_endpoint() << std::endl;
+            std::make_shared<Session>(std::move(socket))->Run();
+        }
+        do_accept();
+    });
+}
+
+void Server::RunServer(){
+    std::cout << "Server has started on port: "sv << port_ << "..." << std::endl;
+    do_accept();
+
+    for(size_t i = 0; i < threads_count_; ++i){
+        thread_pool_.emplace_back([this]{
+            io_context_.run();
+        });
     }
+    for (auto& t : thread_pool_) {
+        if (t.joinable()) {t.join();}
+    }
+    
 }
 
 int main(){
-    try{
-        const auto adress = net::ip::make_address("127.0.0.1");
-        constexpr uint16_t port = 8080;
-        net::io_context io_context;
-        tcp::acceptor acceptor(io_context, tcp::endpoint{tcp::v4(), port});
-        std::cout << "Server has started..." << std::endl;
-        
-        for(;;){
-            tcp::socket socket{io_context};
-            acceptor.accept(socket);    
-            websocket::stream<tcp::socket> ws{std::move(socket)};
-            ws.accept();
-            std::thread t([](websocket::stream<tcp::socket> ws){
-                beast::flat_buffer buffer;
-                for(;;){
-
-                    beast::error_code ec;
-                    ws.read(buffer, ec);
-                    if (ec) {
-                        if (ec == websocket::error::closed) {
-                            std::cout << "Сессия завершена: клиент закрыл соединение." << std::endl;
-                        } else {
-                            std::cerr << "Error reading data: " << ec.message() << std::endl;
-                        }
-                        break;
-                    }
-                    std::cout << "Сервер получил: " << beast::buffers_to_string(buffer.data()) << std::endl;
-
-                    ws.write(net::buffer(buffer.data()), ec);
-                    if(ec){
-                        std::cerr << "Error sending data" << std::endl;
-                        break;
-                    }
-                    buffer.clear();
-                }
-            }, std::move(ws));
-            
-            t.detach();
-            //RequestHandler(ws);
-            
-        }
-    }catch(const beast::system_error& se){
-        std::cerr << "Ошибка: " << se.what() << std::endl;
-        return EXIT_FAILURE;
-    }
-    
+    Server server; 
+    server.RunServer();
 }
