@@ -55,5 +55,6 @@ int main(){
         if(input == "exit"){break;}
         client.SendMessage(input);
         std::string response = client.Recieve();
+        std::cout << "Server: " << response << std::endl;
     }   
 }
