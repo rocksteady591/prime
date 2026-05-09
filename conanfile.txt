@@ -1,5 +1,7 @@
 [requires]
 boost/1.84.0
+libsodium/1.0.19
+protobuf/3.21.12
 
 [generators]
 CMakeDeps
