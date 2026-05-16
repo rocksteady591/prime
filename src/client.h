@@ -17,6 +17,7 @@ public:
     void SendMessage(const std::string& message);
     std::string Recieve();
 private:
+    const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate_keypair();
     std::string host_;
     std::string port_;
     net::io_context io_context_;

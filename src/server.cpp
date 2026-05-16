@@ -2,9 +2,13 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/websocket.hpp>
+#include <sodium/core.h>
+#include <sodium/crypto_box.h>
 #include <thread>
 #include <iostream>
+#include <sodium.h>
 #include "server.h"
+#include "message.pb.h"
 
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -23,6 +27,16 @@ void Session::DoRead(){
         if(ec){
             return;
         }
+        std::string data = beast::buffers_to_string(self->buffer_.data());
+        self->buffer_.consume(self->buffer_.size());
+        messenger::SecureEnvelope recieve_envelope;
+        if(recieve_envelope.ParseFromString(data)){
+            std::string encrypted_text = recieve_envelope.ciphertext();
+            std::string nonce = recieve_envelope.nonce();
+            std::string sender_id = recieve_envelope.sender_id();
+        }else{
+
+        }
         self->ws_.async_write(self->buffer_.data(), [self](beast::error_code ec, std::size_t){
             self->buffer_.consume(self->buffer_.size());
             if(!ec){
@@ -40,6 +54,15 @@ void Session::Run(){
         }
         self->DoRead();
     });
+}
+
+const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> Server::generate_keypair(){
+    unsigned char pk[crypto_box_PUBLICKEYBYTES];
+    unsigned char sk[crypto_box_SECRETKEYBYTES];
+    crypto_box_keypair(pk, sk);
+    const std::vector<unsigned char> public_key(pk, pk + crypto_box_PUBLICKEYBYTES);
+    const std::vector<unsigned char> private_key(sk, sk + crypto_box_SECRETKEYBYTES);
+    return {public_key, private_key};
 }
 
 Server::Server(/*size_t threads_count = */) 
@@ -73,6 +96,10 @@ void Server::RunServer(){
 }
 
 int main(){
+    if(sodium_init() < 0){
+        std::cout << "Libsodium not init\n";
+        return 1;
+    }
     Server server; 
     server.RunServer();
 }

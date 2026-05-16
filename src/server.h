@@ -1,8 +1,9 @@
 #pragma once
 #include "user.h"
 #include <unordered_map>
-#include <unordered_set>
 #include <memory>
+#include <thread>
+#include <boost/beast.hpp>
 
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -25,6 +26,7 @@ public:
     void RunServer();
 
 private:
+    const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate_keypair();
     unsigned short threads_count_;
     const unsigned short port_ = 8080;
     net::io_context io_context_{threads_count_};
