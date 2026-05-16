@@ -4,6 +4,7 @@
 #include <memory>
 #include <thread>
 #include <boost/beast.hpp>
+#include <vector>
 
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -27,6 +28,9 @@ public:
 
 private:
     const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate_keypair();
+    const std::vector<unsigned char> compute_shared_key(
+        const std::vector<unsigned char>& my_sk,
+        const std::vector<unsigned char>& other_pk);
     unsigned short threads_count_;
     const unsigned short port_ = 8080;
     net::io_context io_context_{threads_count_};

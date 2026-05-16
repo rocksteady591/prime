@@ -18,6 +18,9 @@ public:
     std::string Recieve();
 private:
     const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate_keypair();
+    const std::vector<unsigned char> compute_shared_key(
+        const std::vector<unsigned char>& my_sk,
+        const std::vector<unsigned char>& other_pk);
     std::string host_;
     std::string port_;
     net::io_context io_context_;

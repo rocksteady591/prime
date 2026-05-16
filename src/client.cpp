@@ -8,6 +8,7 @@
 #include <sodium.h>
 #include <cstring>
 #include <random>
+#include <vector>
 #include "client.h"
 #include "user.h"
 #include "message.pb.h"
@@ -31,6 +32,14 @@ void Client::Connect(){
     net::connect(ws_.next_layer(), result.begin(), result.end());
     ws_.handshake(host_, "/");
 }
+
+const std::vector<unsigned char> Client::compute_shared_key(
+        const std::vector<unsigned char>& my_sk,
+        const std::vector<unsigned char>& other_pk){
+        unsigned char shared_secret_key[crypto_box_BEFORENMBYTES];
+        crypto_box_beforenm(shared_secret_key, other_pk.data(), my_sk.data());
+        return std::vector<unsigned char>(shared_secret_key, shared_secret_key + crypto_box_BEFORENMBYTES);
+    }
 
 const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> Client::generate_keypair(){
     unsigned char pk[crypto_box_PUBLICKEYBYTES];

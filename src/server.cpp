@@ -56,6 +56,14 @@ void Session::Run(){
     });
 }
 
+const std::vector<unsigned char> Server::compute_shared_key(
+        const std::vector<unsigned char>& my_sk,
+        const std::vector<unsigned char>& other_pk){
+        unsigned char shared_secret_key[crypto_box_BEFORENMBYTES];
+        crypto_box_beforenm(shared_secret_key, other_pk.data(), my_sk.data());
+        return std::vector(shared_secret_key, shared_secret_key + crypto_box_BEFORENMBYTES);
+    }
+
 const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> Server::generate_keypair(){
     unsigned char pk[crypto_box_PUBLICKEYBYTES];
     unsigned char sk[crypto_box_SECRETKEYBYTES];
