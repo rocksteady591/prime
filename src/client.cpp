@@ -1,6 +1,13 @@
 #include <boost/asio.hpp>
+#include <boost/asio/buffer.hpp>
+#include <boost/asio/registered_buffer.hpp>
+#include <boost/beast/core/error.hpp>
+#include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/core/multi_buffer.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/core.hpp>
+#include <boost/asio/buffer.hpp>
+#include <cstddef>
 #include <iostream>
 #include <sodium/core.h>
 #include <sodium/crypto_box.h>
@@ -33,7 +40,7 @@ void Client::Connect(){
     ws_.handshake(host_, "/");
 }
 
-const std::vector<unsigned char> Client::compute_shared_key(
+std::vector<unsigned char> Client::compute_shared_key(
         const std::vector<unsigned char>& my_sk,
         const std::vector<unsigned char>& other_pk){
         unsigned char shared_secret_key[crypto_box_BEFORENMBYTES];
@@ -49,6 +56,49 @@ const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> Client::
     const std::vector<unsigned char>private_key(sk, sk + crypto_box_SECRETKEYBYTES);
     return {public_key, private_key};
 }
+
+void Client::key_exchange(){
+    const auto [pk, sk] = generate_keypair();
+    ws_.async_write(
+        net::buffer(pk.data(), pk.size()), [](beast::error_code ec, std::size_t bytes_transfered){
+            if(ec){
+                std::cerr << "Ошибка отправки ключа: " << ec.message() << std::endl;
+                return;
+            }
+            std::cout << "Ключ отправлен\n";
+    });
+    
+    ws_.async_read(buffer_, [this, sk](beast::error_code ec, std::size_t bytes_received){
+        if(ec){
+            std::cerr << "Ключ не получен: " << ec.message() << std::endl;
+            return;
+        }
+        std::cout << "Ключ получен\n";
+        std::vector<unsigned char> received_key(bytes_received);
+        net::buffer_copy(
+        net::buffer(received_key.data(), received_key.size()), 
+        buffer_.data()
+        );
+        shared_secret_key_ = compute_shared_key(sk, received_key);
+        buffer_.consume(bytes_received);
+    });
+    
+}
+
+void Client::Run(){
+    
+
+    std::string input;
+    while(true){
+        std::cout << "You: ";
+        std::getline(std::cin, input);
+        if(input == "exit"){break;}
+        SendMessage(input);
+        std::string response = Recieve();
+        std::cout << "Server: " << response << std::endl;
+    }
+}
+
 
 void Client::SendMessage(const std::string& message){
     //messenger::SecureEnvelope envelope;
@@ -83,13 +133,5 @@ int main(){
     Client client("127.0.0.1", "8080");
     client.Connect();
     std::cout << "Connected to server!" << std::endl;
-    std::string input;
-    while(true){
-        std::cout << "You: ";
-        std::getline(std::cin, input);
-        if(input == "exit"){break;}
-        client.SendMessage(input);
-        std::string response = client.Recieve();
-        std::cout << "Server: " << response << std::endl;
-    }
+    client.Run();
 }

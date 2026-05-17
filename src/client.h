@@ -14,11 +14,17 @@ class Client{
 public:
     Client(const std::string& host, const std::string& port);
     void Connect();
+    void Run();
+private:
+    //void Write();
+    //void OnWrite();
+    //void Read();
+    //void OnRead();
+    void key_exchange();
     void SendMessage(const std::string& message);
     std::string Recieve();
-private:
     const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate_keypair();
-    const std::vector<unsigned char> compute_shared_key(
+    std::vector<unsigned char> compute_shared_key(
         const std::vector<unsigned char>& my_sk,
         const std::vector<unsigned char>& other_pk);
     std::string host_;
@@ -26,4 +32,7 @@ private:
     net::io_context io_context_;
     tcp::resolver resolver_;
     websocket::stream<tcp::socket> ws_;
+    std::vector<unsigned char> sk_;
+    std::vector<unsigned char> shared_secret_key_;
+    beast::flat_buffer buffer_;
 };
