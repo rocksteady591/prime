@@ -19,6 +19,7 @@
 #include "client.h"
 #include "user.h"
 #include "message.pb.h"
+#include "key_handler.h"
 
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -40,7 +41,7 @@ void Client::Connect(){
     ws_.handshake(host_, "/");
 }
 
-std::vector<unsigned char> Client::compute_shared_key(
+std::vector<unsigned char> compute_shared_key(
         const std::vector<unsigned char>& my_sk,
         const std::vector<unsigned char>& other_pk){
         unsigned char shared_secret_key[crypto_box_BEFORENMBYTES];
@@ -48,7 +49,7 @@ std::vector<unsigned char> Client::compute_shared_key(
         return std::vector<unsigned char>(shared_secret_key, shared_secret_key + crypto_box_BEFORENMBYTES);
     }
 
-const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> Client::generate_keypair(){
+const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate_keypair(){
     unsigned char pk[crypto_box_PUBLICKEYBYTES];
     unsigned char sk[crypto_box_SECRETKEYBYTES];
     crypto_box_keypair(pk, sk);
@@ -74,7 +75,7 @@ void Client::key_exchange(){
             return;
         }
         std::cout << "Ключ получен\n";
-        std::vector<unsigned char> received_key(bytes_received);
+        const std::vector<unsigned char> received_key(bytes_received);
         net::buffer_copy(
         net::buffer(received_key.data(), received_key.size()), 
         buffer_.data()

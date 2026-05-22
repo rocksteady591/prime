@@ -1,5 +1,4 @@
 #pragma once
-#include "user.h"
 #include <unordered_map>
 #include <memory>
 #include <thread>
@@ -17,25 +16,26 @@ public:
     void Run();
     void DoRead();
 private:
+    void key_exchange(const std::vector<unsigned char>& received_key);
     websocket::stream<tcp::socket> ws_;
     beast::flat_buffer buffer_;
+    std::vector<unsigned char> shared_secret_key_;
+    std::vector<unsigned char> sk_;
 };
 
 class Server{
 public:
-    explicit Server(/*size_t threads_count = std::thread::hardware_concurrency()*/);
+    explicit Server();
     void RunServer();
 
 private:
-    const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate_keypair();
-    const std::vector<unsigned char> compute_shared_key(
-        const std::vector<unsigned char>& my_sk,
-        const std::vector<unsigned char>& other_pk);
     unsigned short threads_count_;
     const unsigned short port_ = 8080;
     net::io_context io_context_{threads_count_};
     tcp::acceptor acceptor_;
-    std::unordered_map<std::string, std::shared_ptr<User>> users_;
+    //std::unordered_map<std::string, std::shared_ptr<User>> users_;
     std::vector<std::thread> thread_pool_;
     void do_accept();
+    std::vector<unsigned char> sk_;
+    std::vector<unsigned char> shared_secret_key_;
 };

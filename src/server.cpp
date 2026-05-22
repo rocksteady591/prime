@@ -1,12 +1,17 @@
 #include <boost/asio.hpp>
+#include <boost/asio/buffer.hpp>
 #include <boost/beast/core.hpp>
+#include <boost/beast/core/error.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/websocket.hpp>
+#include <cstddef>
 #include <sodium/core.h>
 #include <sodium/crypto_box.h>
 #include <thread>
 #include <iostream>
+#include <iterator>
 #include <sodium.h>
+#include <vector>
 #include "server.h"
 #include "message.pb.h"
 
@@ -20,13 +25,52 @@ using StringResponse = http::response<http::string_body>;
 using namespace std::literals;
 
 
+std::vector<unsigned char> compute_shared_key(
+        const std::vector<unsigned char>& my_sk,
+        const std::vector<unsigned char>& other_pk){
+        unsigned char shared_secret_key[crypto_box_BEFORENMBYTES];
+        crypto_box_beforenm(shared_secret_key, other_pk.data(), my_sk.data());
+        return std::vector(shared_secret_key, shared_secret_key + crypto_box_BEFORENMBYTES);
+    }
+
+const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate_keypair(){
+    unsigned char pk[crypto_box_PUBLICKEYBYTES];
+    unsigned char sk[crypto_box_SECRETKEYBYTES];
+    crypto_box_keypair(pk, sk);
+    const std::vector<unsigned char> public_key(pk, pk + crypto_box_PUBLICKEYBYTES);
+    const std::vector<unsigned char> private_key(sk, sk + crypto_box_SECRETKEYBYTES);
+    return {public_key, private_key};
+}
+
 Session::Session(tcp::socket socket) : ws_(std::move(socket)) {}
 
+void Session::key_exchange(const std::vector<unsigned char>& received_key){
+    auto [pk, sk] = generate_keypair();
+    ws_.async_write(net::buffer(pk.data(), pk.size()), [](beast::error_code ec, std::size_t bytes_write){
+        if(ec){
+            std::cerr << "Public key dont send" << std::endl;
+        }
+    });
+    sk_ = std::move(sk);
+    shared_secret_key_ = compute_shared_key(sk, received_key);
+}
+
 void Session::DoRead(){
-    ws_.async_read(buffer_, [self = shared_from_this()](beast::error_code ec, std::size_t){
+    ws_.async_read(buffer_, [self = shared_from_this()](beast::error_code ec, std::size_t bytes_read){
         if(ec){
             return;
         }
+        //if this first user message
+        if(self->shared_secret_key_.size() == 0){
+            
+            const std::vector<unsigned char> received_key(bytes_read);
+            net::buffer_copy(
+                net::buffer(received_key.data(), received_key.size()), 
+            self->buffer_.data());
+            self->key_exchange(received_key);
+            self->buffer_.consume(bytes_read);
+        }
+        //add check user is autorized or no
         std::string data = beast::buffers_to_string(self->buffer_.data());
         self->buffer_.consume(self->buffer_.size());
         messenger::SecureEnvelope recieve_envelope;
@@ -48,32 +92,17 @@ void Session::DoRead(){
 
 
 void Session::Run(){
+
     ws_.async_accept([self = shared_from_this()](beast::error_code ec){
         if(ec){
             return;
         }
+        
         self->DoRead();
     });
 }
 
-const std::vector<unsigned char> Server::compute_shared_key(
-        const std::vector<unsigned char>& my_sk,
-        const std::vector<unsigned char>& other_pk){
-        unsigned char shared_secret_key[crypto_box_BEFORENMBYTES];
-        crypto_box_beforenm(shared_secret_key, other_pk.data(), my_sk.data());
-        return std::vector(shared_secret_key, shared_secret_key + crypto_box_BEFORENMBYTES);
-    }
-
-const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> Server::generate_keypair(){
-    unsigned char pk[crypto_box_PUBLICKEYBYTES];
-    unsigned char sk[crypto_box_SECRETKEYBYTES];
-    crypto_box_keypair(pk, sk);
-    const std::vector<unsigned char> public_key(pk, pk + crypto_box_PUBLICKEYBYTES);
-    const std::vector<unsigned char> private_key(sk, sk + crypto_box_SECRETKEYBYTES);
-    return {public_key, private_key};
-}
-
-Server::Server(/*size_t threads_count = */) 
+Server::Server() 
 : threads_count_(std::thread::hardware_concurrency()), 
 io_context_(threads_count_), 
 acceptor_(io_context_, tcp::endpoint{tcp::v4(), port_}){}
