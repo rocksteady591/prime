@@ -1,4 +1,16 @@
 #pragma once
+#include <boost/date_time/posix_time/posix_time_types.hpp>
+#include <boost/date_time/posix_time/ptime.hpp>
+#include <boost/date_time/posix_time/posix_time_types.hpp>
+#include <boost/date_time/posix_time/time_formatters.hpp>
+#include <boost/json/object.hpp>
+#include <boost/log/core/record_view.hpp>
+#include <boost/log/trivial.hpp>
+#include <boost/log/utility/formatting_ostream_fwd.hpp>
+#include <boost/log/utility/setup/console.hpp>
+#include <boost/json.hpp>
+#include <boost/log/utility/value_ref.hpp>
+#include <string>
 #include <unordered_map>
 #include <memory>
 #include <thread>
@@ -8,7 +20,39 @@
 namespace net = boost::asio;
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
+namespace logging = boost::log;
 using tcp = net::ip::tcp;
+
+inline void ServerLog(const std::string& data, const std::string& message){
+    
+}
+
+inline void LogFormatter(logging::record_view const& rec, logging::formatting_ostream& strm){
+    using namespace std::literals;
+    boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
+    boost::json::object obj;
+    obj["timestamp"] = boost::posix_time::to_iso_extended_string(now);
+    logging::value_ref<boost::json::object>data = logging::extract<boost::json::object>("data", rec);
+    if(data){
+        obj["data"] = data.get();
+    }else{
+        obj["data"] = "empty data"s;
+    }
+    logging::value_ref<std::string>message = logging::extract<std::string>("msg", rec);
+    if(message){
+        obj["message"] = message.get();
+    }else{
+        obj["message"] = "empty message"s;
+    }
+    
+}
+
+inline void InitLog(){
+    logging::add_console_log(
+        std::clog,
+        boost::log::keywords::format = &LogFormatter
+    );
+}
 
 class Session : public std::enable_shared_from_this<Session>{
 public:

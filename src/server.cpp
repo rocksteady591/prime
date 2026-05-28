@@ -4,6 +4,7 @@
 #include <boost/beast/core/error.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/websocket.hpp>
+#include <boost/log/trivial.hpp>
 #include <cstddef>
 #include <sodium/core.h>
 #include <sodium/crypto_box.h>
@@ -63,7 +64,7 @@ void Session::DoRead(){
         //if this first user message
         if(self->shared_secret_key_.size() == 0){
             
-            const std::vector<unsigned char> received_key(bytes_read);
+            std::vector<unsigned char> received_key(bytes_read);
             net::buffer_copy(
                 net::buffer(received_key.data(), received_key.size()), 
             self->buffer_.data());
@@ -111,6 +112,7 @@ void Server::do_accept(){
     acceptor_.async_accept([this](beast::error_code ec, tcp::socket socket){
         if(!ec){
             std::cout << "New connection: " << socket.remote_endpoint() << std::endl;
+            
             std::make_shared<Session>(std::move(socket))->Run();
         }
         do_accept();
@@ -137,6 +139,7 @@ int main(){
         std::cout << "Libsodium not init\n";
         return 1;
     }
+    InitLog();
     Server server; 
     server.RunServer();
 }

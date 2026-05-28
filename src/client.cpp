@@ -11,11 +11,13 @@
 #include <iostream>
 #include <sodium/core.h>
 #include <sodium/crypto_box.h>
+#include <sodium/randombytes.h>
 #include <thread>
 #include <sodium.h>
 #include <cstring>
 #include <random>
 #include <vector>
+#include <string>
 #include "client.h"
 #include "user.h"
 #include "message.pb.h"
@@ -75,7 +77,7 @@ void Client::key_exchange(){
             return;
         }
         std::cout << "Ключ получен\n";
-        const std::vector<unsigned char> received_key(bytes_received);
+        std::vector<unsigned char> received_key(bytes_received);
         net::buffer_copy(
         net::buffer(received_key.data(), received_key.size()), 
         buffer_.data()
@@ -102,17 +104,46 @@ void Client::Run(){
 
 
 void Client::SendMessage(const std::string& message){
-    //messenger::SecureEnvelope envelope;
-    //envelope.set_nonce(GenerateNonce());
-    //envelope.set_ciphertext(message);
-    //envelope.set_sender_id("pensil1");
-    //std::string buffer;
-    //envelope.SerializeToString(&buffer);
-    //beast::error_code ec;
-    //ws_.write(net::buffer(buffer), ec);
-    //if(ec){
-    //    std::cerr << "Error: " << ec.message() << std::endl;
-    //}
+    messenger::SecureEnvelope envelope;
+    envelope.set_ciphertext(message);
+    envelope.set_sender_id("pensil");
+
+    //сериализацияб только текст сообщения
+    std::string secret_data = envelope.ciphertext();
+    /*if(!envelope.SerializeToString(&serialized)){
+        std::cerr << "Ошибка сериализации protobuf!" << std::endl;
+        return;
+    }*/
+
+    unsigned char nonce[crypto_box_NONCEBYTES];
+    randombytes_buf(nonce, sizeof(nonce));
+
+    std::size_t cipher_size = secret_data.size() + crypto_box_MACBYTES;
+    std::vector<unsigned char> ciphertext(cipher_size);
+    crypto_box_easy_afternm(
+        ciphertext.data(), 
+        reinterpret_cast<const unsigned char*>(secret_data.data()),
+        secret_data.size(),
+        nonce, 
+        shared_secret_key_.data()
+    );
+    envelope.clear_ciphertext();
+    envelope.set_encrypted_playload(reinterpret_cast<const char*>(ciphertext.data()), ciphertext.size());
+    envelope.set_nonce(nonce, sizeof(nonce));
+
+    std::string str_data_buffer;
+    if(!envelope.SerializeToString(&str_data_buffer)){
+        std::cerr << "Ошибка сериализации protobuf!" << std::endl;
+        return;
+    }
+
+    ws_.async_write(net::buffer(str_data_buffer.data(), str_data_buffer.size()), [](beast::error_code ec, std::size_t bytes_write){
+        if(ec){
+            std::cerr << "Ошибка отправки сообщения: " << ec.message() << std::endl;
+        }else{
+            std::cout << "Сообщение отправлено" << std::endl;
+        }
+    });
 }
 
 std::string Client::Recieve(){
