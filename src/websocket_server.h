@@ -23,38 +23,40 @@ namespace websocket = beast::websocket;
 namespace logging = boost::log;
 using tcp = net::ip::tcp;
 
-inline void ServerLog(const std::string& data, const std::string& message){
-    
+inline void ServerLog(const std::string& data, const std::string& message) {
+
 }
 
-inline void LogFormatter(logging::record_view const& rec, logging::formatting_ostream& strm){
+inline void LogFormatter(logging::record_view const& rec, logging::formatting_ostream& strm) {
     using namespace std::literals;
     boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
     boost::json::object obj;
     obj["timestamp"] = boost::posix_time::to_iso_extended_string(now);
     logging::value_ref<boost::json::object>data = logging::extract<boost::json::object>("data", rec);
-    if(data){
+    if (data) {
         obj["data"] = data.get();
-    }else{
+    }
+    else {
         obj["data"] = "empty data"s;
     }
     logging::value_ref<std::string>message = logging::extract<std::string>("msg", rec);
-    if(message){
+    if (message) {
         obj["message"] = message.get();
-    }else{
+    }
+    else {
         obj["message"] = "empty message"s;
     }
-    
+
 }
 
-inline void InitLog(){
+inline void InitLog() {
     logging::add_console_log(
         std::clog,
         boost::log::keywords::format = &LogFormatter
     );
 }
 
-class Session : public std::enable_shared_from_this<Session>{
+class Session : public std::enable_shared_from_this<Session> {
 public:
     Session(tcp::socket socket);
     void Run();
@@ -67,7 +69,7 @@ private:
     std::vector<unsigned char> sk_;
 };
 
-class Server{
+class Server {
 public:
     explicit Server();
     void RunServer();
@@ -75,7 +77,7 @@ public:
 private:
     unsigned short threads_count_;
     const unsigned short port_ = 8080;
-    net::io_context io_context_{threads_count_};
+    net::io_context io_context_{ threads_count_ };
     tcp::acceptor acceptor_;
     //std::unordered_map<std::string, std::shared_ptr<User>> users_;
     std::vector<std::thread> thread_pool_;

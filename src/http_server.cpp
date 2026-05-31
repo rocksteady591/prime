@@ -13,66 +13,77 @@
 #include <exception>
 #include <memory>
 #include <thread>
+#include <iostream>
 
 namespace net = boost::asio;
 namespace http = boost::beast::http;
 
 
-Session::Session(tcp::socket&& socket) : stream_(std::move(socket)){}
+Session::Session(tcp::socket&& socket, const std::string& base)
+    : stream_(std::move(socket)), handler_(RequestHandler(base)) {}
 
-void Session::Run(){
+void Session::Run() {
     DoRead();
 }
 
-void Session::DoRead(){
-    http::async_read(stream_, buffer_, request_, 
-    beast::bind_front_handler(&Session::OnRead, this->shared_from_this()));
+void Session::DoRead() {
+    http::async_read(stream_, buffer_, request_,
+        beast::bind_front_handler(&Session::OnRead, this->shared_from_this()));
 }
 
-void Session::OnRead(beast::error_code ec, [[maybe_unused]] std::size_t bytes_transfered){
-    if(ec){
+void Session::OnRead(beast::error_code ec, [[maybe_unused]] std::size_t bytes_transfered) {
+    if (ec) {
         //add logging
         return;
     }
-    
+    std::shared_ptr<HttpResponse> response = handler_.request_handler(std::move(request_));
+    DoRead();
 }
 
-Listener::Listener(net::io_context& ioc, const tcp::endpoint& endpoint) 
-    : ioc_(ioc), acceptor_(net::make_strand(ioc_)){
-        acceptor_.open(endpoint.protocol());
-        acceptor_.set_option(net::socket_base::reuse_address(true));
-        acceptor_.bind(endpoint);
-        acceptor_.listen(net::socket_base::max_listen_connections);
-    }
+Listener::Listener(net::io_context& ioc, const tcp::endpoint& endpoint, const std::string& base)
+    : ioc_(ioc), acceptor_(net::make_strand(ioc_)), base_path_(base) {
+    acceptor_.open(endpoint.protocol());
+    acceptor_.set_option(net::socket_base::reuse_address(true));
+    acceptor_.bind(endpoint);
+    acceptor_.listen(net::socket_base::max_listen_connections);
+}
 
-void Listener::RunServer(){
+void Listener::RunServer() {
     DoAccept();
 }
 
-void Listener::DoAccept(){
+void Listener::DoAccept() {
     acceptor_.async_accept(ioc_.get_executor(), beast::bind_front_handler(&Listener::OnnAccept, this->shared_from_this()));
 }
-void Listener::OnnAccept(boost::system::error_code ec, tcp::socket socket){
-    if(ec){
+void Listener::OnnAccept(boost::system::error_code ec, tcp::socket socket) {
+    if (ec) {
         return;
     }
     AsyncRunServer(std::move(socket));
     DoAccept();
 }
-void Listener::AsyncRunServer(tcp::socket socket){
-    std::make_shared<Session>(std::move(socket))->Run();
+void Listener::AsyncRunServer(tcp::socket socket) {
+    std::make_shared<Session>(std::move(socket), base_path_)->Run();
 }
 
-int main(){
+int main(int argc, const char* argv[]) {
+    if (argc != 2) {
+        std::cerr << "Dont include static" << std::endl;
+        return 1;
+    }
+
     constexpr net::ip::port_type port = 8080;
     try {
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
         //InitLog
-        tcp::endpoint endpoint{tcp::v4(), port};
-        std::make_shared<Listener>(ioc, endpoint)->RunServer();
-        
-    } catch (const std::exception& ex) {
-    
+        std::cout << "server has startde\n";
+        tcp::endpoint endpoint{ tcp::v4(), port };
+        const std::string base_path = argv[1];
+        std::make_shared<Listener>(ioc, endpoint, base_path)->RunServer();
+
+    }
+    catch (const std::exception& ex) {
+        //add log
     }
 }

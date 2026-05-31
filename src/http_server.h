@@ -12,18 +12,21 @@
 #include <boost/system/detail/error_code.hpp>
 #include <memory>
 
+#include "request_handler.h"
+
 namespace net = boost::asio;
 using tcp = net::ip::tcp;
 namespace http = boost::beast::http;
 namespace beast = boost::beast;
 
-class Session : public std::enable_shared_from_this<Session>{
+class Session : public std::enable_shared_from_this<Session> {
+    using HttpRequest = http::request<http::string_body>;
+    using HttpResponse = http::response<http::string_body>;
 public:
-    Session(tcp::socket&& socket);
+    Session(tcp::socket&& socket, const std::string& base);
     void Run();
 private:
-using HttpRequest = http::request<http::string_body>;
-    void HandleRequest(HttpRequest&& request);
+    RequestHandler handler_;
     void DoRead();
     void OnRead(beast::error_code ec, [[maybe_unused]] std::size_t bytes_transfered);
     beast::tcp_stream stream_;
@@ -31,9 +34,9 @@ using HttpRequest = http::request<http::string_body>;
     HttpRequest request_;
 };
 
-class Listener : public std::enable_shared_from_this<Listener>{
+class Listener : public std::enable_shared_from_this<Listener> {
 public:
-    Listener(net::io_context& ioc, const tcp::endpoint& endpoint);
+    Listener(net::io_context& ioc, const tcp::endpoint& endpoint, const std::string& base);
     void RunServer();
 private:
     void DoAccept();
@@ -41,4 +44,5 @@ private:
     void AsyncRunServer(tcp::socket socket);
     net::io_context& ioc_;
     tcp::acceptor acceptor_;
+    std::string base_path_;
 };

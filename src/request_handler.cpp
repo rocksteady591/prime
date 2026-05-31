@@ -1,0 +1,74 @@
+#include "request_handler.h"
+#include <algorithm>
+#include <cstdlib>
+
+RequestHandler::RequestHandler(const std::string& static_path)
+    : static_path_(static_path) {}
+
+std::shared_ptr<RequestHandler::HttpResponse> RequestHandler::request_handler(HttpRequest request) {
+    if (request.method() != http::verb::get) {
+        //add log
+        return nullptr;
+    }
+    std::string target(request.target().begin(), request.target().end());
+    std::string decoded_url = DecodedURL(target);
+    if (decoded_url == "/") {
+        decoded_url = "/index.html";
+    }
+    if (!decoded_url.empty() && decoded_url[0] == '/') {
+        decoded_url = decoded_url.substr(1);
+    }
+
+    std::filesystem::path receive_path =
+        std::filesystem::weakly_canonical(std::filesystem::path(static_path_) / decoded_url);
+
+    if (!IsSubpath(receive_path)) {
+        //add log
+        //send response
+        return nullptr;
+    }
+
+    //add content type
+    std::string content_type;
+    return SendResponse(http::status::ok, std::move(request), content_type);
+}
+
+std::shared_ptr<RequestHandler::HttpResponse> RequestHandler::SendResponse(const http::status status, const HttpRequest request, const std::string& content_type) {
+    //add log
+    std::shared_ptr<HttpResponse> response = std::make_shared<HttpResponse>();
+    response->version(request.version());
+    response->result(status);
+    response->insert(http::field::content_type, content_type);
+    response->body(); //file
+    response->prepare_payload();
+    response->keep_alive(request.keep_alive());
+    //add call write metod
+    return response;
+}
+
+std::string RequestHandler::DecodedURL(const std::string& target) {
+    std::string res;
+    res.reserve(target.size());
+    for (size_t i = 0; i < target.size(); ++i) {
+        if (target[i] == '%' && i + 2 < target.size()) {
+            std::string hex_str = target.substr(i + 1, 2);
+            res.push_back(static_cast<char>(std::strtol(hex_str.c_str(), nullptr, 16)));
+            i += 2;
+        }
+        else if (target[i] == '+') {
+            res.push_back(' ');
+        }
+        else {
+            res.push_back(target[i]);
+        }
+    }
+    return res;
+}
+
+bool RequestHandler::IsSubpath(const std::filesystem::path& receive_path) {
+    std::filesystem::path base_path = std::filesystem::weakly_canonical(static_path_);
+    //receive_path = std::filesystem::weakly_canonical(receive_path);
+    auto [first, last] = std::mismatch(base_path.begin(), base_path.end(),
+        receive_path.begin(), receive_path.end());
+    return first == base_path.end();
+}

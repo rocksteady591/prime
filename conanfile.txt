@@ -1,6 +1,9 @@
 [requires]
-boost/1.84.0
-libsodium/1.0.19
+boost/1.91.0
+libsodium/1.0.21
+protobuf/3.21.12
+
+[tool_requires]
 protobuf/3.21.12
 
 [generators]
