@@ -1,14 +1,25 @@
 #include "request_handler.h"
 #include <algorithm>
 #include <cstdlib>
+#include <iostream>
 
 RequestHandler::RequestHandler(const std::string& static_path)
     : static_path_(static_path) {}
 
-std::shared_ptr<RequestHandler::HttpResponse> RequestHandler::request_handler(HttpRequest request) {
+RequestHandler::HttpResponse RequestHandler::SendBadRequest(const HttpRequest& request, const http::status status) {
+    std::shared_ptr<http::response<http::string_body>> s_response = std::make_shared<http::response<http::string_body>>();
+    s_response->result(http::status::not_found);
+    s_response->insert(http::field::content_type, "text/plain");
+    s_response->body() = (status == http::status::not_found) ? "404 File not found." : "400 Bad request.";
+    s_response->prepare_payload();
+    s_response->keep_alive(request.keep_alive());
+    return s_response;
+}
+
+RequestHandler::HttpResponse RequestHandler::request_handler(const HttpRequest& request) {
     if (request.method() != http::verb::get) {
         //add log
-        return nullptr;
+        return SendBadRequest(request, http::status::bad_request);
     }
     std::string target(request.target().begin(), request.target().end());
     std::string decoded_url = DecodedURL(target);
@@ -24,25 +35,35 @@ std::shared_ptr<RequestHandler::HttpResponse> RequestHandler::request_handler(Ht
 
     if (!IsSubpath(receive_path)) {
         //add log
-        //send response
-        return nullptr;
+        return SendBadRequest(request, http::status::not_found);
     }
 
     //add content type
-    std::string content_type;
-    return SendResponse(http::status::ok, std::move(request), content_type);
+    std::string content_type = ContentType(receive_path);
+    return SendResponse(http::status::ok, std::move(request), content_type, receive_path.string());
+
 }
 
-std::shared_ptr<RequestHandler::HttpResponse> RequestHandler::SendResponse(const http::status status, const HttpRequest request, const std::string& content_type) {
+RequestHandler::HttpResponse RequestHandler::SendResponse(const http::status status, const HttpRequest& request, const std::string& content_type, const std::filesystem::path& full_path) {
     //add log
-    std::shared_ptr<HttpResponse> response = std::make_shared<HttpResponse>();
+    std::shared_ptr<http::response<http::file_body>> response = std::make_shared<http::response<http::file_body>>();
     response->version(request.version());
-    response->result(status);
+    
     response->insert(http::field::content_type, content_type);
-    response->body(); //file
+    http::file_body::value_type file;
+    boost::system::error_code ec;
+    file.open(full_path.string().c_str(), beast::file_mode::read, ec);
+
+    if (ec) {
+        //add log
+        std::cerr << "File dont open: " << ec.message() << std::endl;
+        
+        return SendBadRequest(request, http::status::not_found);
+    }
+    response->result(status);
+    response->body() = std::move(file);
     response->prepare_payload();
     response->keep_alive(request.keep_alive());
-    //add call write metod
     return response;
 }
 
@@ -71,4 +92,25 @@ bool RequestHandler::IsSubpath(const std::filesystem::path& receive_path) {
     auto [first, last] = std::mismatch(base_path.begin(), base_path.end(),
         receive_path.begin(), receive_path.end());
     return first == base_path.end();
+}
+
+const std::string RequestHandler::ContentType(const std::filesystem::path& path) {
+    std::string type = path.extension().string();
+    std::transform(type.begin(), type.end(), type.begin(), [](unsigned char c) { return tolower(c); });
+
+    if (type == ".htm" || type == ".html") return "text/html";
+    if (type == ".css")                    return "text/css";
+    if (type == ".txt")                    return "text/plain";
+    if (type == ".js")                     return "text/javascript";
+    if (type == ".json")                   return "application/json";
+    if (type == ".xml")                    return "application/xml";
+    if (type == ".png")                    return "image/png";
+    if (type == ".jpg" || type == ".jpe" || type == ".jpeg") return "image/jpeg";
+    if (type == ".gif")                    return "image/gif";
+    if (type == ".bmp")                    return "image/bmp";
+    if (type == ".ico")                    return "image/vnd.microsoft.icon";
+    if (type == ".tiff" || type == ".tif") return "image/tiff";
+    if (type == ".svg" || type == ".svgz") return "image/svg+xml";
+    if (type == ".mp3")                    return "audio/mpeg";
+    return "application/octet-stream";
 }

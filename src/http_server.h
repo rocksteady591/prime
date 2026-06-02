@@ -11,6 +11,7 @@
 #include <boost/beast/http/string_body.hpp>
 #include <boost/system/detail/error_code.hpp>
 #include <memory>
+#include <variant>
 
 #include "request_handler.h"
 
@@ -21,14 +22,16 @@ namespace beast = boost::beast;
 
 class Session : public std::enable_shared_from_this<Session> {
     using HttpRequest = http::request<http::string_body>;
-    using HttpResponse = http::response<http::string_body>;
+    using HttpResponse = std::variant <std::shared_ptr< http::response<http::file_body >>, std::shared_ptr<http::response<http::string_body>>>;
 public:
     Session(tcp::socket&& socket, const std::string& base);
     void Run();
 private:
     RequestHandler handler_;
-    void DoRead();
+    void Read();
     void OnRead(beast::error_code ec, [[maybe_unused]] std::size_t bytes_transfered);
+    void Write(HttpResponse response);
+    void OnWrite(bool close, beast::error_code ec, [[maybe_unused]] std::size_t bytes_transfered);
     beast::tcp_stream stream_;
     beast::flat_buffer buffer_;
     HttpRequest request_;
@@ -40,6 +43,7 @@ public:
     void RunServer();
 private:
     void DoAccept();
+    //add report error method
     void OnnAccept(boost::system::error_code ec, tcp::socket socket);
     void AsyncRunServer(tcp::socket socket);
     net::io_context& ioc_;
