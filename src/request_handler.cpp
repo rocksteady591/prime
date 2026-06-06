@@ -17,31 +17,35 @@ RequestHandler::HttpResponse RequestHandler::SendBadRequest(const HttpRequest& r
 }
 
 RequestHandler::HttpResponse RequestHandler::request_handler(const HttpRequest& request) {
-    if (request.method() != http::verb::get) {
+    if (request.method() != http::verb::get && request.method() != http::verb::head && request.method() != http::verb::post) {
         //add log
         return SendBadRequest(request, http::status::bad_request);
     }
-    std::string target(request.target().begin(), request.target().end());
-    std::string decoded_url = DecodedURL(target);
-    if (decoded_url == "/") {
-        decoded_url = "/index.html";
+    if (request.method() == http::verb::get) {
+        std::string target(request.target().begin(), request.target().end());
+        std::string decoded_url = DecodedURL(target);
+        if (decoded_url == "/") {
+            decoded_url = "/index.html";
+        }
+        if (!decoded_url.empty() && decoded_url[0] == '/') {
+            decoded_url = decoded_url.substr(1);
+        }
+
+        std::filesystem::path receive_path =
+            std::filesystem::weakly_canonical(std::filesystem::path(static_path_) / decoded_url);
+
+        if (!IsSubpath(receive_path)) {
+            //add log
+            return SendBadRequest(request, http::status::not_found);
+        }
+
+        //add content type
+        std::string content_type = ContentType(receive_path);
+        return SendResponse(http::status::ok, std::move(request), content_type, receive_path.string());
     }
-    if (!decoded_url.empty() && decoded_url[0] == '/') {
-        decoded_url = decoded_url.substr(1);
+    else {
+
     }
-
-    std::filesystem::path receive_path =
-        std::filesystem::weakly_canonical(std::filesystem::path(static_path_) / decoded_url);
-
-    if (!IsSubpath(receive_path)) {
-        //add log
-        return SendBadRequest(request, http::status::not_found);
-    }
-
-    //add content type
-    std::string content_type = ContentType(receive_path);
-    return SendResponse(http::status::ok, std::move(request), content_type, receive_path.string());
-
 }
 
 RequestHandler::HttpResponse RequestHandler::SendResponse(const http::status status, const HttpRequest& request, const std::string& content_type, const std::filesystem::path& full_path) {
