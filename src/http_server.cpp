@@ -109,14 +109,14 @@ int main(/*int argc, const char* argv[]*/) {
         return 1;
     }*/
 
-    constexpr net::ip::port_type port = 8080;
+    constexpr net::ip::port_type port = 80;
     try {
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
         //InitLog
         std::cout << "Server has started...\n";
         tcp::endpoint endpoint{ tcp::v4(), port };
-        const std::string base_path = "C:\\projects\\primal\\static"/*argv[0]*/;
+        const std::string base_path = "E:\\primal\\static"/*argv[0]*/;
         std::make_shared<Listener>(ioc, endpoint, base_path)->RunServer();
 
         RunWorkers(std::max(1u, num_threads), [&ioc] {

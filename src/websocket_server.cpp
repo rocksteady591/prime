@@ -53,7 +53,7 @@ void Session::key_exchange(const std::vector<unsigned char>& received_key) {
         }
         });
     sk_ = std::move(sk);
-    shared_secret_key_ = compute_shared_key(sk, received_key);
+    shared_secret_key_ = compute_shared_key(sk_, received_key);
 }
 
 void Session::DoRead() {
@@ -63,13 +63,13 @@ void Session::DoRead() {
         }
         //if this first user message
         if (self->shared_secret_key_.size() == 0) {
-
             std::vector<unsigned char> received_key(bytes_read);
-            net::buffer_copy(
-                net::buffer(received_key.data(), received_key.size()),
+            net::buffer_copy(net::buffer(received_key.data(), received_key.size()),
                 self->buffer_.data());
             self->key_exchange(received_key);
             self->buffer_.consume(bytes_read);
+            self->DoRead(); // начать новое чтение
+            return;
         }
         //add check user is autorized or no
         std::string data = beast::buffers_to_string(self->buffer_.data());
@@ -94,12 +94,12 @@ void Session::DoRead() {
 
 
 void Session::Run() {
-
     ws_.async_accept([self = shared_from_this()](beast::error_code ec) {
         if (ec) {
             return;
         }
-
+        // ВСЕ ИСХОДЯЩИЕ СООБЩЕНИЯ ТЕПЕРЬ БИНАРНЫЕ
+        self->ws_.binary(true);
         self->DoRead();
         });
 }
