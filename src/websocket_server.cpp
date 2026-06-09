@@ -52,47 +52,106 @@ void Session::key_exchange(const std::vector<unsigned char>& received_key) {
             std::cerr << "Public key dont send" << std::endl;
         }
         });
-    sk_ = std::move(sk);
+    sk_ = std::move(sk); 
     shared_secret_key_ = compute_shared_key(sk_, received_key);
 }
 
 void Session::DoRead() {
     ws_.async_read(buffer_, [self = shared_from_this()](beast::error_code ec, std::size_t bytes_read) {
         if (ec) {
+            std::cerr << "Read error: " << ec.message() << std::endl;
             return;
         }
-        //if this first user message
-        if (self->shared_secret_key_.size() == 0) {
+
+        // Первый шаг: обмен ключами
+        if (self->shared_secret_key_.empty()) {
             std::vector<unsigned char> received_key(bytes_read);
             net::buffer_copy(net::buffer(received_key.data(), received_key.size()),
                 self->buffer_.data());
             self->key_exchange(received_key);
             self->buffer_.consume(bytes_read);
-            self->DoRead(); // начать новое чтение
+            self->DoRead();
             return;
         }
-        //add check user is autorized or no
+
+        // Получаем данные из буфера
         std::string data = beast::buffers_to_string(self->buffer_.data());
         self->buffer_.consume(self->buffer_.size());
-        messenger::SecureEnvelope recieve_envelope;
-        if (recieve_envelope.ParseFromString(data)) {
-            std::string encrypted_text = recieve_envelope.ciphertext();
-            std::string nonce = recieve_envelope.nonce();
-            std::string sender_id = recieve_envelope.sender_id();
-        }
-        else {
 
+        // Парсим SecureEnvelope
+        messenger::SecureEnvelope recieve_envelope;
+        if (!recieve_envelope.ParseFromString(data)) {
+            std::cerr << "Failed to parse SecureEnvelope" << std::endl;
+            return;
         }
-        self->ws_.async_write(self->buffer_.data(), [self](beast::error_code ec, std::size_t) {
-            self->buffer_.consume(self->buffer_.size());
-            if (!ec) {
-                self->DoRead();
-            }
+
+        const std::string& ciphertext = recieve_envelope.ciphertext();
+        const std::string& nonce = recieve_envelope.nonce();
+        std::string sender_id = recieve_envelope.sender_id();
+
+        std::cout << "Received envelope from " << sender_id << "\n";
+        std::cout << "Ciphertext size: " << ciphertext.size() << "\n";
+        std::cout << "Nonce size: " << nonce.size() << "\n";
+
+        // Проверка минимальной длины шифротекста
+        if (ciphertext.size() < crypto_box_MACBYTES) {
+            std::cerr << "Ciphertext too short" << std::endl;
+            return;
+        }
+        if (nonce.size() != crypto_box_NONCEBYTES) {
+            std::cerr << "Invalid nonce size" << std::endl;
+            return;
+        }
+
+        // Расшифровка
+        std::vector<unsigned char> plaintext(ciphertext.size() - crypto_box_MACBYTES);
+        if (crypto_box_open_easy_afternm(
+            plaintext.data(),
+            reinterpret_cast<const unsigned char*>(ciphertext.data()),
+            ciphertext.size(),
+            reinterpret_cast<const unsigned char*>(nonce.data()),
+            self->shared_secret_key_.data()) != 0) {
+            std::cerr << "Decryption failed" << std::endl;
+            return;
+        }
+
+        std::string message(plaintext.begin(), plaintext.end());
+        std::cout << "Decrypted message: " << message << std::endl;
+
+        // Формируем зашифрованный ответ (эхо)
+        std::vector<unsigned char> new_nonce(crypto_box_NONCEBYTES);
+        randombytes_buf(new_nonce.data(), new_nonce.size());
+
+        std::vector<unsigned char> encrypted(message.size() + crypto_box_MACBYTES);
+        crypto_box_easy_afternm(
+            encrypted.data(),
+            reinterpret_cast<const unsigned char*>(message.data()),
+            message.size(),
+            new_nonce.data(),
+            self->shared_secret_key_.data());
+
+        messenger::SecureEnvelope response;
+        response.set_ciphertext(encrypted.data(), encrypted.size());
+        response.set_nonce(new_nonce.data(), new_nonce.size());
+        response.set_sender_id("Server");
+
+        std::string serialized;
+        response.SerializeToString(&serialized);
+
+        auto sp = std::make_shared<std::string>(std::move(serialized));
+
+        self->ws_.async_write(
+            net::buffer(*sp),
+            [self, sp](beast::error_code ec, std::size_t) {
+                if (!ec) {
+                    self->DoRead();
+                }
+                else {
+                    std::cerr << "Write error: " << ec.message() << std::endl;
+                }
             });
         });
 }
-
-
 void Session::Run() {
     ws_.async_accept([self = shared_from_this()](beast::error_code ec) {
         if (ec) {

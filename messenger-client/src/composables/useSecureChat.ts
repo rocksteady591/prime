@@ -46,18 +46,27 @@ export function useSecureChat() {
     };
 
     socket.onmessage = async (event: MessageEvent) => {
+      console.log('=== Message received ===');
+      console.log('Data type:', typeof event.data);
+      console.log('Data is ArrayBuffer:', event.data instanceof ArrayBuffer);
+  
       if (!(event.data instanceof ArrayBuffer)) {
-        console.error('Expected binary data');
+        console.error('Expected binary data, got:', typeof event.data);
         return;
       }
-
+  
       const data = new Uint8Array(event.data);
-
+      console.log('Raw data length:', data.length);
+      console.log('Raw data (hex):', Array.from(data.slice(0, 32)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+  
       if (!sharedKey) {
         if (!myKeypair) {
           console.error('Keypair not initialized');
           return;
         }
+        console.log('Receiving server public key, length:', data.length);
+        console.log('Expected public key length:', _sodium.crypto_box_PUBLICKEYBYTES);
+    
         const serverPk = data;
         sharedKey = _sodium.crypto_box_beforenm(serverPk, myKeypair.privateKey);
         status.value = 'connected';
@@ -66,22 +75,32 @@ export function useSecureChat() {
       }
 
       try {
+        console.log('Trying to decode Protobuf...');
         const envelope = messenger.SecureEnvelope.decode(data);
-        // Приводим поля: в реальности они Uint8Array, но типы могут говорить string
+        console.log('Decoded envelope:', envelope);
+        console.log('ciphertext type:', typeof envelope.ciphertext, 'length:', envelope.ciphertext?.length);
+        console.log('nonce type:', typeof envelope.nonce, 'length:', envelope.nonce?.length);
+        console.log('senderId:', envelope.senderId);
+    
         const ciphertext = envelope.ciphertext || new Uint8Array(0);
         const nonce = envelope.nonce || new Uint8Array(0);
-        const sender = envelope.senderId || 'unknown';
-
+    
+        console.log('Nonce length:', nonce.length, '(expected 24)');
+        console.log('Ciphertext length:', ciphertext.length);
+    
         const decrypted = _sodium.crypto_box_open_easy_afternm(
           ciphertext,
           nonce,
           sharedKey
         );
+    
+        const sender = envelope.senderId || 'unknown';
         messages.value.push({
           sender,
           text: new TextDecoder().decode(decrypted),
           timestamp: Date.now(),
         });
+        console.log('Decrypted successfully:', new TextDecoder().decode(decrypted));
       } catch (err) {
         console.error('Decryption error', err);
       }
