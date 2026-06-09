@@ -1,74 +1,106 @@
-#include "request_handler.h"
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <boost/json.hpp>
+#include <boost/json/object.hpp>
+#include "boost/json/serialize.hpp"
+#include <boost/log/utility/manipulators/add_value.hpp>
+#include "request_handler.h"
+#include "log.h"
+
+namespace json = boost::json;
+namespace logging = boost::log;
 
 RequestHandler::RequestHandler(const std::string& static_path)
     : static_path_(static_path) {}
 
-RequestHandler::HttpResponse RequestHandler::SendBadRequest(const HttpRequest& request, const http::status status) {
-    std::shared_ptr<http::response<http::string_body>> s_response = std::make_shared<http::response<http::string_body>>();
-    s_response->result(http::status::not_found);
-    s_response->insert(http::field::content_type, "text/plain");
-    s_response->body() = (status == http::status::not_found) ? "404 File not found." : "400 Bad request.";
-    s_response->prepare_payload();
-    s_response->keep_alive(request.keep_alive());
-    return s_response;
+void RequestHandler::LogHandler(std::size_t error_code, std::string data, std::string message){
+    json::object obj;
+    obj["code"] = error_code;
+    obj["data"] = std::move(data);
+    BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", std::move(message));
 }
 
-RequestHandler::HttpResponse RequestHandler::request_handler(const HttpRequest& request) {
-    if (request.method() != http::verb::get && request.method() != http::verb::head && request.method() != http::verb::post) {
-        //add log
-        return SendBadRequest(request, http::status::bad_request);
-    }
-    if (request.method() == http::verb::get) {
-        std::string target(request.target().begin(), request.target().end());
-        std::string decoded_url = DecodedURL(target);
-        if (decoded_url == "/") {
-            decoded_url = "/index.html";
+RequestHandler::HttpResponse RequestHandler::request_handler(HttpRequest request) {
+    using namespace std::literals;
+    auto text_response = [&](http::status status, std::string body, std::string_view type = "application/json") {
+        std::shared_ptr<http::response<http::string_body>> response = std::make_shared<http::response<http::string_body>>(status, request.version());
+        response->set(http::field::content_type, type);
+        response->body() = std::move(body);
+        response->set(http::field::cache_control, "no-cache");
+        response->prepare_payload();
+        response->keep_alive(request.keep_alive());
+        return response;
+    };
+
+    std::string target(request.target().begin(), request.target().end());
+    std::string decoded_url = DecodedURL(target);
+    if (decoded_url == "/api/login") {
+        if (request.method() != http::verb::post) {
+            json::object obj;
+			obj["code"] = "invalidMethod";
+            obj["message"] = "Only POST method is expected";
+            auto response = text_response(http::status::method_not_allowed, json::serialize(obj));
+            response->set(http::field::allow, "POST");
+            LogHandler(405, "invalidMethod"s, "Only POST method is expected"s);
+            return response;
         }
-        if (!decoded_url.empty() && decoded_url[0] == '/') {
-            decoded_url = decoded_url.substr(1);
+        if (request[http::field::content_type] != "application/json") {
+            json::object obj;
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Request parse error";
+            LogHandler(400, "invalidArgument"s, "Request parse error"s);
+            return text_response(http::status::bad_request, json::serialize(obj));
         }
-
-        std::filesystem::path receive_path =
-            std::filesystem::weakly_canonical(std::filesystem::path(static_path_) / decoded_url);
-
-        if (!IsSubpath(receive_path)) {
-            //add log
-            return SendBadRequest(request, http::status::not_found);
+        std::string login;
+        std::string password;
+        try
+        {
+            json::value request_body = json::parse(request.body());
+            json::object req_obj = request_body.as_object();
+            login = req_obj["login"].as_string();
+            password = req_obj["password"].as_string();
         }
-
-        //add content type
-        std::string content_type = ContentType(receive_path);
-        return SendResponse(http::status::ok, std::move(request), content_type, receive_path.string());
-    }
-    else {
-
-    }
-}
-
-RequestHandler::HttpResponse RequestHandler::SendResponse(const http::status status, const HttpRequest& request, const std::string& content_type, const std::filesystem::path& full_path) {
-    //add log
-    std::shared_ptr<http::response<http::file_body>> response = std::make_shared<http::response<http::file_body>>();
-    response->version(request.version());
-    
-    response->insert(http::field::content_type, content_type);
-    http::file_body::value_type file;
-    boost::system::error_code ec;
-    file.open(full_path.string().c_str(), beast::file_mode::read, ec);
-
-    if (ec) {
-        //add log
-        std::cerr << "File dont open: " << ec.message() << std::endl;
+        catch(const std::exception& e)
+        {
+            json::object obj;
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Request parse error";
+            LogHandler(400, "invalidArgument"s, "Request parse error"s);
+            return text_response(http::status::bad_request, json::serialize(obj));
+        }
+        if(login.empty()){
+            json::object obj;
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Login is empty";
+            LogHandler(400, "invalidArgument"s, "Login is empty"s);
+            return text_response(http::status::bad_request, json::serialize(obj));
+        }
+        if(password.empty()){
+            json::object obj;
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Password is empty";
+            LogHandler(400, "invalidArgument"s, "Password is empty"s);
+            return text_response(http::status::bad_request, json::serialize(obj));
+        }
         
-        return SendBadRequest(request, http::status::not_found);
     }
-    response->result(status);
-    response->body() = std::move(file);
-    response->prepare_payload();
-    response->keep_alive(request.keep_alive());
-    return response;
+    if (!decoded_url.empty() && decoded_url[0] == '/') {
+        decoded_url = decoded_url.substr(1);
+    }
+
+    std::filesystem::path receive_path =
+        std::filesystem::weakly_canonical(std::filesystem::path(static_path_) / decoded_url);
+
+    if (!IsSubpath(receive_path)) {
+        //add log
+        //return SendBadRequest(request, http::status::not_found);
+    }
+
+    //add content type
+    std::string content_type = ContentType(receive_path);
+    //return SendResponse(http::status::ok, std::move(request), content_type/*, receive_path.string()*/);
+
 }
 
 std::string RequestHandler::DecodedURL(const std::string& target) {

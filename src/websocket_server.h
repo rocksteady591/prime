@@ -27,34 +27,27 @@ inline void ServerLog(const std::string& data, const std::string& message) {
 
 }
 
-inline void LogFormatter(logging::record_view const& rec, logging::formatting_ostream& strm) {
-    using namespace std::literals;
-    boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
-    boost::json::object obj;
-    obj["timestamp"] = boost::posix_time::to_iso_extended_string(now);
-    logging::value_ref<boost::json::object>data = logging::extract<boost::json::object>("data", rec);
-    if (data) {
-        obj["data"] = data.get();
-    }
-    else {
-        obj["data"] = "empty data"s;
-    }
-    logging::value_ref<std::string>message = logging::extract<std::string>("msg", rec);
-    if (message) {
-        obj["message"] = message.get();
-    }
-    else {
-        obj["message"] = "empty message"s;
-    }
-
-}
-
-inline void InitLog() {
-    logging::add_console_log(
-        std::clog,
-        boost::log::keywords::format = &LogFormatter
-    );
-}
+//inline void LogFormatter(logging::record_view const& rec, logging::formatting_ostream& strm) {
+//    using namespace std::literals;
+//    boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
+//    boost::json::object obj;
+//    obj["timestamp"] = boost::posix_time::to_iso_extended_string(now);
+//    logging::value_ref<boost::json::object>data = logging::extract<boost::json::object>("data", rec);
+//    if (data) {
+//        obj["data"] = data.get();
+//    }
+//    else {
+//        obj["data"] = "empty data"s;
+//    }
+//    logging::value_ref<std::string>message = logging::extract<std::string>("msg", rec);
+//    if (message) {
+//        obj["message"] = message.get();
+//    }
+//    else {
+//        obj["message"] = "empty message"s;
+//    }
+//
+//}
 
 class Session : public std::enable_shared_from_this<Session> {
 public:
@@ -82,6 +75,7 @@ private:
     //std::unordered_map<std::string, std::shared_ptr<User>> users_;
     std::vector<std::thread> thread_pool_;
     void do_accept();
-    std::vector<unsigned char> sk_;
+    std::vector<unsigned char> sk_;//?
     std::vector<unsigned char> shared_secret_key_;
+    void LogActions(const std::string& data, const std::string& message);
 };

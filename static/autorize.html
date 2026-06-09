@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Вход и Регистрация</title>
+	<style>
+		* {
+			box-sizing: border-box;
+			margin: 0;
+			padding: 0;
+			font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+		}
+
+		body {
+			background-color: #0f0c1b;
+			height: 100vh;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			color: #e2e1e9;
+		}
+
+		/* Контейнер для карточки формы */
+		.auth-container {
+			background-color: #1a162b;
+			padding: 40px 35px;
+			border-radius: 16px;
+			border: 1px solid #2d264d;
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+			width: 100%;
+			max-width: 400px;
+			text-align: center;
+			transition: all 0.3s ease;
+		}
+
+		/* Заголовок (ВХОД / РЕГИСТРАЦИЯ) */
+		h1 {
+			font-size: 32px;
+			font-weight: 700;
+			margin-bottom: 30px;
+			color: #e2e1e9;
+			letter-spacing: 2px;
+			text-transform: uppercase;
+		}
+
+		/* Группы полей ввода */
+		.input-group {
+			margin-bottom: 20px;
+			text-align: left;
+		}
+
+		/* Поля ввода (Логин, Пароль) */
+		.auth-input {
+			width: 100%;
+			padding: 14px 20px;
+			background-color: #0f0c1b;
+			border: 1px solid #2d264d;
+			border-radius: 8px;
+			color: #e2e1e9;
+			font-size: 16px;
+			outline: none;
+			transition: all 0.2s ease;
+		}
+
+			.auth-input:focus {
+				border-color: #00f0ff;
+				box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+			}
+
+			/* Плейсхолдеры */
+			.auth-input::placeholder {
+				color: #635f80;
+			}
+
+		/* Кнопка действия (Войти / Создать) */
+		.auth-btn {
+			width: 100%;
+			padding: 14px;
+			background-color: #ff007f;
+			border: none;
+			border-radius: 8px;
+			color: #ffffff;
+			font-size: 16px;
+			font-weight: 600;
+			cursor: pointer;
+			margin-top: 10px;
+			margin-bottom: 20px;
+			transition: background 0.2s, transform 0.1s;
+			box-shadow: 0 4px 12px rgba(255, 0, 127, 0.2);
+		}
+
+			.auth-btn:hover {
+				background-color: #e60072;
+				transform: translateY(-1px);
+			}
+
+			.auth-btn:active {
+				transform: translateY(1px);
+			}
+
+		/* Текст-ссылка внизу (Нет аккаунта / Уже есть аккаунт) */
+		.auth-footer {
+			font-size: 14px;
+			color: #a3a0bd;
+			line-height: 1.6;
+		}
+
+		.auth-link {
+			color: #00f0ff;
+			text-decoration: none;
+			cursor: pointer;
+			font-weight: 500;
+			transition: color 0.2s;
+			display: inline-block;
+			margin-top: 4px;
+		}
+
+			.auth-link:hover {
+				color: #33f3ff;
+				text-decoration: underline;
+			}
+
+		/* Класс для скрытия неактивной формы */
+		.hidden {
+			display: none;
+		}
+	</style>
+</head>
+<body>
+
+	<div id="login-form" class="auth-container">
+		<h1>Вход</h1>
+		<form onsubmit="event.preventDefault();">
+			<div class="input-group">
+				<input type="text" class="auth-input" placeholder="Логин" required>
+			</div>
+			<div class="input-group">
+				<input type="password" class="auth-input" placeholder="Пароль" required>
+			</div>
+			<button type="submit" class="auth-btn">Войти</button>
+		</form>
+		<div class="auth-footer">
+			нет аккаунта<br>
+			<span class="auth-link" onclick="toggleForm()">зарегистрироваться</span>
+		</div>
+	</div>
+
+	<div id="register-form" class="auth-container hidden">
+		<h1>Регистрация</h1>
+		<form onsubmit="event.preventDefault();">
+			<div class="input-group">
+				<input type="text" class="auth-input" placeholder="Придумайте логин" required>
+			</div>
+			<div class="input-group">
+				<input type="email" class="auth-input" placeholder="Email" required>
+			</div>
+			<div class="input-group">
+				<input type="password" class="auth-input" placeholder="Придумайте пароль" required>
+			</div>
+			<button type="submit" class="auth-btn">Создать аккаунт</button>
+		</form>
+		<div class="auth-footer">
+			уже есть аккаунт?<br>
+			<span class="auth-link" onclick="toggleForm()">войти в систему</span>
+		</div>
+	</div>
+
+	<script>
+		function toggleForm() {
+		const loginForm = document.getElementById('login-form');
+		const registerForm = document.getElementById('register-form');
+
+		loginForm.classList.toggle('hidden');
+		registerForm.classList.toggle('hidden');
+		}
+	</script>
+
+</body>
+</html>

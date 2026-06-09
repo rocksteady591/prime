@@ -21,12 +21,12 @@ add_executable(http_server
      "src/http_server.h"
     ${PROTO_SRCS} 
     ${PROTO_HDRS}
-  "src/request_handler.h" "src/request_handler.cpp")
+  "src/request_handler.h" "src/request_handler.cpp" "src/log.h" "src/user.cpp" "src/user.h")
 add_executable(websocket_server
     "src/websocket_server.cpp"
     "src/websocket_server.h"
     ${PROTO_SRCS}
-    ${PROTO_HDRS})
+    ${PROTO_HDRS} "src/log.h" "src/user.cpp" "src/user.h")
 
 # Указываем, где искать сгенерированный message.pb.h
 target_include_directories(http_server PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
