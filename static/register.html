@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Messenger Mockup - Right Sidebar & New Colors</title>
+	<style>
+		* {
+			box-sizing: border-box;
+			margin: 0;
+			padding: 0;
+			font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+		}
+
+		body {
+			background-color: #0f0c1b;
+			height: 100vh;
+			display: flex;
+			flex-direction: column;
+			color: #e2e1e9;
+		}
+
+		/* Верхняя панель навигации */
+		.navbar {
+			display: flex;
+			background-color: #1a162b;
+			border-bottom: 1px solid #2d264d;
+			box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+		}
+
+		.nav-item {
+			flex: 1;
+			padding: 15px 20px;
+			text-align: center;
+			font-weight: 600;
+			color: #a3a0bd;
+			cursor: pointer;
+			transition: background 0.2s, color 0.2s;
+			text-transform: capitalize;
+		}
+
+			.nav-item:hover {
+				background-color: #25203e;
+				color: #00f0ff; /* Неоновый голубой при наведении */
+			}
+
+			.nav-item.active {
+				color: #ff007f; /* Неоновый розовый для активного пункта */
+				border-bottom: 3px solid #ff007f;
+				background-color: #211c38;
+			}
+
+		/* Основной контейнер */
+		.main-container {
+			display: flex;
+			flex: 1;
+			overflow: hidden;
+		}
+
+		/* Правая панель (Чаты / Контакты) - ТЕПЕРЬ СПРАВА */
+		.sidebar {
+			width: 250px;
+			background-color: #1a162b;
+			border-left: 1px solid #2d264d; /* Граница слева, так как панель справа */
+			display: flex;
+			flex-direction: column;
+			order: 2; /* Сдвигает блок в самый конец (вправо) */
+		}
+
+		.sidebar-header {
+			padding: 12px 15px;
+			background-color: #211c38;
+			border-bottom: 1px solid #2d264d;
+			font-size: 12px;
+			color: #a3a0bd;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+
+		.close-btn {
+			cursor: pointer;
+			font-weight: bold;
+			color: #ff007f;
+		}
+
+		.chat-list {
+			overflow-y: auto;
+			flex: 1;
+		}
+
+		.chat-item {
+			padding: 15px;
+			border-bottom: 1px solid #25203e;
+			cursor: pointer;
+			font-weight: 500;
+			color: #e2e1e9;
+			transition: background 0.2s;
+		}
+
+			.chat-item:hover {
+				background-color: #25203e;
+			}
+
+			.chat-item.active {
+				background-color: #2d264d;
+				color: #00f0ff;
+				border-right: 4px solid #00f0ff;
+			}
+
+		/* Левая часть (Окно чата) - ТЕПЕРЬ СЛЕВА */
+		.chat-window {
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			background-color: #141124; /* Глубокий темный фон */
+			position: relative;
+			order: 1;
+		}
+
+		/* Область сообщений */
+		.messages-container {
+			flex: 1;
+			padding: 20px;
+			overflow-y: auto;
+			display: flex;
+			flex-direction: column;
+			gap: 15px;
+		}
+
+		/* Облака сообщений */
+		.message {
+			max-width: 60%;
+			padding: 12px 18px;
+			border-radius: 20px;
+			font-size: 15px;
+			line-height: 1.4;
+			box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+		}
+
+			.message.incoming {
+				background-color: #25203e;
+				color: #e2e1e9;
+				align-self: flex-start;
+				border-top-left-radius: 4px;
+				border-left: 3px solid #ff007f;
+			}
+
+			.message.outgoing {
+				background-color: #00f0ff;
+				color: #0f0c1b;
+				font-weight: 500;
+				align-self: flex-end;
+				border-top-right-radius: 4px;
+			}
+
+		/* Нижняя панель ввода */
+		.input-panel {
+			padding: 15px;
+			background-color: #1a162b;
+			border-top: 1px solid #2d264d;
+			display: flex;
+			align-items: center;
+			gap: 10px;
+		}
+
+		.input-container {
+			flex: 1;
+			position: relative;
+			display: flex;
+			align-items: center;
+		}
+
+		.message-input {
+			width: 100%;
+			padding: 12px 50px 12px 20px;
+			border: 1px solid #2d264d;
+			border-radius: 25px;
+			outline: none;
+			font-size: 15px;
+			background-color: #0f0c1b;
+			color: #e2e1e9;
+		}
+
+			.message-input:focus {
+				border-color: #00f0ff;
+				box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+			}
+
+		/* Кнопка отправки внутри поля */
+		.send-btn {
+			position: absolute;
+			right: 8px;
+			width: 36px;
+			height: 36px;
+			background-color: #ff007f;
+			border: none;
+			border-radius: 50%;
+			color: white;
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			transition: background 0.2s, transform 0.1s;
+		}
+
+			.send-btn:hover {
+				background-color: #e60072;
+				transform: scale(1.05);
+			}
+
+			.send-btn svg {
+				width: 18px;
+				height: 18px;
+				fill: currentColor;
+				transform: rotate(45deg);
+				margin-right: 2px;
+				margin-top: -2px;
+			}
+	</style>
+</head>
+<body>
+
+	<nav class="navbar">
+		<div class="nav-item active">chats</div>
+		<div class="nav-item">contacts</div>
+		<div class="nav-item">settings</div>
+		<div class="nav-item">account</div>
+	</nav>
+
+	<div class="main-container">
+
+		<main class="chat-window">
+			<div class="messages-container">
+				<div class="message incoming">Привет! Как тебе новый дизайн?</div>
+				<div class="message incoming">Перекрасили в неоновые тона и перенесли панель направо.</div>
+
+				<div class="message outgoing">Вау, фиолетово-розовая гамма выглядит сочно!</div>
+				<div class="message outgoing">И чаты справа — непривычно, но под левую руку удобно.</div>
+
+				<div class="message incoming">Отлично, пользуйся! 🚀</div>
+			</div>
+
+			<div class="input-panel">
+				<div class="input-container">
+					<input type="text" class="message-input" placeholder="Введите сообщение...">
+					<button class="send-btn" title="Отправить">
+						<svg viewBox="0 0 24 24">
+							<path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
+						</svg>
+					</button>
+				</div>
+			</div>
+		</main>
+
+		<aside class="sidebar">
+			<div class="sidebar-header">
+				<span>НАВИГАЦИЯ</span>
+				<span class="close-btn">← закрыть</span>
+			</div>
+			<div class="chat-list">
+				<div class="chat-item active">nul</div>
+				<div class="chat-item">ВАНЯ</div>
+			</div>
+		</aside>
+
+	</div>
+
+</body>
+</html>

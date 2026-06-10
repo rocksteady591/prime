@@ -8,6 +8,7 @@
 #include <boost/beast.hpp>
 #include <boost/beast/core/bind_handler.hpp>
 #include <boost/beast/core/error.hpp>
+#include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/beast/http.hpp>
 #include <cstddef>
 #include <exception>
@@ -16,6 +17,7 @@
 #include <iostream>
 #include <vector>
 #include <variant>
+#include "log.h"
 
 namespace net = boost::asio;
 namespace http = boost::beast::http;
@@ -36,7 +38,9 @@ void Session::Read() {
 
 void Session::OnRead(beast::error_code ec, [[maybe_unused]] std::size_t bytes_transfered) {
     if (ec) {
-        //add logging
+        json::object obj;
+        obj["Error"] = "readingError";
+        BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj) << logging::add_value("msg", ec.message());
         return;
     }
     HttpResponse response = handler_.request_handler(std::move(request_));
@@ -54,13 +58,17 @@ void Session::Write(HttpResponse response) {
 
 void Session::OnWrite(bool closed, beast::error_code ec, [[maybe_unused]] std::size_t bytes_transfered) {
     if (ec) {
-
+        json::object obj;
+        obj["Error"] = "writingError";
+        BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj) << logging::add_value("msg", ec.message());
     }
     if (closed) {
         beast::error_code ecd;
         stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
         if (ec) {
-            //add call report error
+            json::object obj;
+            obj["Error"] = "closeError";
+            BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj) << logging::add_value("msg", ec.message());
         }
     }
     Read();
@@ -83,7 +91,9 @@ void Listener::DoAccept() {
 }
 void Listener::OnnAccept(boost::system::error_code ec, tcp::socket socket) {
     if (ec) {
-        return;
+        json::object obj;
+        obj["Error"] = "acceptError";
+        BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj) << logging::add_value("msg", ec.message());
     }
     AsyncRunServer(std::move(socket));
     DoAccept();
@@ -108,15 +118,17 @@ int main(/*int argc, const char* argv[]*/) {
         std::cerr << "Dont include static" << std::endl;
         return 1;
     }*/
-
+    using namespace std::literals;
     constexpr net::ip::port_type port = 80;
     try {
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
-        //InitLog
-        std::cout << "Server has started...\n";
         tcp::endpoint endpoint{ tcp::v4(), port };
-        const std::string base_path = "E:\\primal\\static"/*argv[0]*/;
+        json::object obj;
+        obj["port"] = port;
+        obj["address"] = endpoint.address().to_string();
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "server has started"s);
+        const std::string base_path = "C:\\Users\\rocks\\source\\repos\\rocksteady591\\primal\\static"/*argv[0]*/;
         std::make_shared<Listener>(ioc, endpoint, base_path)->RunServer();
 
         RunWorkers(std::max(1u, num_threads), [&ioc] {
@@ -124,6 +136,8 @@ int main(/*int argc, const char* argv[]*/) {
             });
     }
     catch (const std::exception& ex) {
-        //add log
+        json::object obj;
+        obj["Error"] = "dntStartServer";
+        BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj) << logging::add_value("msg", ex.what());
     }
 }
