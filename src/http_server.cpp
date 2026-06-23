@@ -24,8 +24,9 @@ namespace http = boost::beast::http;
 using tcp = net::ip::tcp;
 
 
-Session::Session(tcp::socket&& socket, const std::string& base)
-    : stream_(std::move(socket)), handler_(RequestHandler(base)) {}
+Session::Session(tcp::socket&& socket, const std::string& base, Users& users)
+    : stream_(std::move(socket)), handler_(RequestHandler(base, users)), users_(users) {
+}
 
 void Session::Run() {
     Read();
@@ -74,8 +75,9 @@ void Session::OnWrite(bool closed, beast::error_code ec, [[maybe_unused]] std::s
     Read();
 }
 
-Listener::Listener(net::io_context& ioc, const tcp::endpoint& endpoint, const std::string& base)
-    : ioc_(ioc), acceptor_(net::make_strand(ioc_)), base_path_(base) {
+Listener::Listener(net::io_context& ioc, const tcp::endpoint& endpoint,
+    const std::string& base, Users& users)
+    : ioc_(ioc), acceptor_(net::make_strand(ioc_)), base_path_(base), users_(users) {
     acceptor_.open(endpoint.protocol());
     acceptor_.set_option(net::socket_base::reuse_address(true));
     acceptor_.bind(endpoint);
@@ -99,7 +101,7 @@ void Listener::OnnAccept(boost::system::error_code ec, tcp::socket socket) {
     DoAccept();
 }
 void Listener::AsyncRunServer(tcp::socket socket) {
-    std::make_shared<Session>(std::move(socket), base_path_)->Run();
+    std::make_shared<Session>(std::move(socket), base_path_, users_)->Run();
 }
 
 template<typename T>
@@ -129,7 +131,8 @@ int main(/*int argc, const char* argv[]*/) {
         obj["address"] = endpoint.address().to_string();
         BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "server has started"s);
         const std::string base_path = "C:\\Users\\rocks\\source\\repos\\rocksteady591\\primal\\static"/*argv[0]*/;
-        std::make_shared<Listener>(ioc, endpoint, base_path)->RunServer();
+        Users users;
+        std::make_shared<Listener>(ioc, endpoint, base_path, users)->RunServer();
 
         RunWorkers(std::max(1u, num_threads), [&ioc] {
             ioc.run();

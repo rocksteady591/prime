@@ -25,7 +25,7 @@ export const messenger = $root.messenger = (() => {
          * @property {Uint8Array|null} [nonce] SecureEnvelope nonce
          * @property {Uint8Array|null} [ciphertext] SecureEnvelope ciphertext
          * @property {string|null} [senderId] SecureEnvelope senderId
-         * @property {Uint8Array|null} [encryptedPlayload] SecureEnvelope encryptedPlayload
+         * @property {string|null} [recipientId] SecureEnvelope recipientId
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
 
@@ -82,12 +82,12 @@ export const messenger = $root.messenger = (() => {
         SecureEnvelope.prototype.senderId = "";
 
         /**
-         * SecureEnvelope encryptedPlayload.
-         * @member {Uint8Array} encryptedPlayload
+         * SecureEnvelope recipientId.
+         * @member {string} recipientId
          * @memberof messenger.SecureEnvelope
          * @instance
          */
-        SecureEnvelope.prototype.encryptedPlayload = $util.newBuffer([]);
+        SecureEnvelope.prototype.recipientId = "";
 
         /**
          * Creates a new SecureEnvelope instance using the specified properties.
@@ -127,8 +127,8 @@ export const messenger = $root.messenger = (() => {
                 writer.uint32(/* id 2, wireType 2 =*/18).bytes(message.ciphertext);
             if (message.senderId != null && $Object.hasOwnProperty.call(message, "senderId"))
                 writer.uint32(/* id 3, wireType 2 =*/26).string(message.senderId);
-            if (message.encryptedPlayload != null && $Object.hasOwnProperty.call(message, "encryptedPlayload"))
-                writer.uint32(/* id 4, wireType 2 =*/34).bytes(message.encryptedPlayload);
+            if (message.recipientId != null && $Object.hasOwnProperty.call(message, "recipientId"))
+                writer.uint32(/* id 4, wireType 2 =*/34).string(message.recipientId);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
                 for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
@@ -206,10 +206,10 @@ export const messenger = $root.messenger = (() => {
                 case 4: {
                         if (wireType !== 2)
                             break;
-                        if ((value = reader.bytes()).length)
-                            message.encryptedPlayload = value;
+                        if ((value = reader.string()).length)
+                            message.recipientId = value;
                         else
-                            delete message.encryptedPlayload;
+                            delete message.recipientId;
                         continue;
                     }
                 }
@@ -264,9 +264,9 @@ export const messenger = $root.messenger = (() => {
             if (message.senderId != null && $Object.hasOwnProperty.call(message, "senderId"))
                 if (!$util.isString(message.senderId))
                     return "senderId: string expected";
-            if (message.encryptedPlayload != null && $Object.hasOwnProperty.call(message, "encryptedPlayload"))
-                if (!(message.encryptedPlayload && typeof message.encryptedPlayload.length === "number" || $util.isString(message.encryptedPlayload)))
-                    return "encryptedPlayload: buffer expected";
+            if (message.recipientId != null && $Object.hasOwnProperty.call(message, "recipientId"))
+                if (!$util.isString(message.recipientId))
+                    return "recipientId: string expected";
             return null;
         };
 
@@ -303,12 +303,9 @@ export const messenger = $root.messenger = (() => {
             if (object.senderId != null)
                 if (typeof object.senderId !== "string" || object.senderId.length)
                     message.senderId = $String(object.senderId);
-            if (object.encryptedPlayload != null)
-                if (object.encryptedPlayload.length)
-                    if (typeof object.encryptedPlayload === "string")
-                        $util.base64.decode(object.encryptedPlayload, message.encryptedPlayload = $util.newBuffer($util.base64.length(object.encryptedPlayload)), 0);
-                    else if (object.encryptedPlayload.length >= 0)
-                        message.encryptedPlayload = object.encryptedPlayload;
+            if (object.recipientId != null)
+                if (typeof object.recipientId !== "string" || object.recipientId.length)
+                    message.recipientId = $String(object.recipientId);
             return message;
         };
 
@@ -345,13 +342,7 @@ export const messenger = $root.messenger = (() => {
                         object.ciphertext = $util.newBuffer(object.ciphertext);
                 }
                 object.senderId = "";
-                if (options.bytes === $String)
-                    object.encryptedPlayload = "";
-                else {
-                    object.encryptedPlayload = [];
-                    if (options.bytes !== $Array)
-                        object.encryptedPlayload = $util.newBuffer(object.encryptedPlayload);
-                }
+                object.recipientId = "";
             }
             if (message.nonce != null && $Object.hasOwnProperty.call(message, "nonce"))
                 object.nonce = options.bytes === $String ? $util.base64.encode(message.nonce, 0, message.nonce.length) : options.bytes === $Array ? $Array.prototype.slice.call(message.nonce) : message.nonce;
@@ -359,8 +350,8 @@ export const messenger = $root.messenger = (() => {
                 object.ciphertext = options.bytes === $String ? $util.base64.encode(message.ciphertext, 0, message.ciphertext.length) : options.bytes === $Array ? $Array.prototype.slice.call(message.ciphertext) : message.ciphertext;
             if (message.senderId != null && $Object.hasOwnProperty.call(message, "senderId"))
                 object.senderId = message.senderId;
-            if (message.encryptedPlayload != null && $Object.hasOwnProperty.call(message, "encryptedPlayload"))
-                object.encryptedPlayload = options.bytes === $String ? $util.base64.encode(message.encryptedPlayload, 0, message.encryptedPlayload.length) : options.bytes === $Array ? $Array.prototype.slice.call(message.encryptedPlayload) : message.encryptedPlayload;
+            if (message.recipientId != null && $Object.hasOwnProperty.call(message, "recipientId"))
+                object.recipientId = message.recipientId;
             return object;
         };
 

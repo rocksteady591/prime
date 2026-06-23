@@ -6,5 +6,5 @@ message SecureEnvelope {
     bytes nonce = 1;      // '1' — это номер поля, а не значение
     bytes  ciphertext = 2; // '2' — это номер поля
     string sender_id = 3; // '3' — это номер поля
-    bytes encrypted_playload = 4;
+    string recipient_id = 4;
 }
