@@ -32,8 +32,8 @@ export namespace messenger {
         /** SecureEnvelope senderId. */
         senderId: string;
 
-        /** SecureEnvelope encryptedPlayload. */
-        encryptedPlayload: Uint8Array;
+        /** SecureEnvelope recipientId. */
+        recipientId: string;
 
         /**
          * Creates a new SecureEnvelope instance using the specified properties.
@@ -128,8 +128,8 @@ export namespace messenger {
             /** SecureEnvelope senderId */
             senderId?: (string|null);
 
-            /** SecureEnvelope encryptedPlayload */
-            encryptedPlayload?: (Uint8Array|null);
+            /** SecureEnvelope recipientId */
+            recipientId?: (string|null);
 
             /** Unknown fields preserved while decoding */
             $unknowns?: Uint8Array[];

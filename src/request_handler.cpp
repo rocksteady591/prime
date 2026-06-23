@@ -11,8 +11,90 @@
 namespace json = boost::json;
 namespace logging = boost::log;
 
-RequestHandler::RequestHandler(const std::string& static_path)
-    : static_path_(static_path) {}
+RequestHandler::RequestHandler(const std::string& static_path, Users& users)
+    : static_path_(static_path), users_(users) {}
+
+RequestHandler::HttpResponse RequestHandler::HandleApiPost(const HttpRequest& request) {
+    std::string target = request.target();
+    if (target == "/api/register") {
+        return HandleRegister(request);
+    }
+    else if (target == "/api/login") {
+        return HandleLogin(request);
+    }
+    // 404 для неизвестных API
+    auto res = std::make_shared<http::response<http::string_body>>();
+    res->result(http::status::not_found);
+    res->set(http::field::content_type, "application/json");
+    res->body() = R"({"error":"Unknown API endpoint"})";
+    return res;
+}
+
+RequestHandler::HttpResponse RequestHandler::HandleRegister(const HttpRequest& request) {
+    auto res = std::make_shared<http::response<http::string_body>>();
+    res->set(http::field::content_type, "application/json");
+
+    try {
+        auto body = boost::json::parse(request.body()).as_object();
+        std::string login = body["login"].as_string().c_str();
+        std::string pass_hash = body["password_hash"].as_string().c_str();
+
+        if (login.empty() || pass_hash.empty()) {
+            res->result(http::status::bad_request);
+            res->body() = R"({"error":"login and password_hash required"})";
+            return res;
+        }
+
+        std::string token = users_.RegisterUser(login, pass_hash);
+        boost::json::object resp;
+        resp["token"] = token;
+        resp["user_id"] = std::to_string(users_.FindUserByLogin(login)->GetId());
+        res->result(http::status::ok);
+        res->body() = boost::json::serialize(resp);
+    }
+    catch (const std::exception& e) {
+        res->result(http::status::bad_request);
+        res->body() = std::string(R"({"error":")") + e.what() + "\"}";
+    }
+    return res;
+}
+
+RequestHandler::HttpResponse RequestHandler::HandleLogin(const HttpRequest& request) {
+    auto res = std::make_shared<http::response<http::string_body>>();
+    res->set(http::field::content_type, "application/json");
+
+    try {
+        auto body = boost::json::parse(request.body()).as_object();
+        std::string login = body["login"].as_string().c_str();
+        std::string pass_hash = body["password_hash"].as_string().c_str();
+
+        auto* user = users_.FindUserByLogin(login);
+        if (!user || user->GetPasswordHash() != pass_hash) {
+            res->result(http::status::unauthorized);
+            res->body() = R"({"error":"Invalid credentials"})";
+            return res;
+        }
+
+        // Если токен ещё не был выдан или просрочен (заглушка)
+        if (user->GetToken().empty()) {
+            // Генерируем новый (простой способ – перерегистрация токена)
+            // Здесь для простоты просто используем тот же токен, что и при регистрации,
+            // но можно перегенерировать. Оставим как есть.
+            // В реальном проекте нужно обновлять токен при логине.
+        }
+
+        boost::json::object resp;
+        resp["token"] = user->GetToken();
+        resp["user_id"] = std::to_string(user->GetId());
+        res->result(http::status::ok);
+        res->body() = boost::json::serialize(resp);
+    }
+    catch (const std::exception& e) {
+        res->result(http::status::bad_request);
+        res->body() = std::string(R"({"error":")") + e.what() + "\"}";
+    }
+    return res;
+}
 
 void RequestHandler::LogHandler(std::size_t error_code, std::string data, std::string message){
     json::object obj;
@@ -23,6 +105,13 @@ void RequestHandler::LogHandler(std::size_t error_code, std::string data, std::s
 
 RequestHandler::HttpResponse RequestHandler::request_handler(HttpRequest request) {
     using namespace std::literals;
+
+    if (request.target().starts_with("/api/")) {
+        if (request.method() == http::verb::post) {
+            return HandleApiPost(request);
+        }
+    }
+
     auto text_response = [&](http::status status, std::string body, std::string_view type = "application/json") {
         std::shared_ptr<http::response<http::string_body>> response = std::make_shared<http::response<http::string_body>>(status, request.version());
         response->set(http::field::content_type, type);
