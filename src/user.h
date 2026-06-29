@@ -16,10 +16,12 @@ public:
     std::size_t GetId() const noexcept;
     const std::string& GetToken() const noexcept;
     void SetToken(const std::string& token);
+    const std::string& GetUserName()const noexcept;
 private:
     std::string login_;
     std::string pass_hash_;
     std::size_t id_ = 0;
+    std::string user_name_;
     std::string token_;
 };
 
@@ -28,6 +30,7 @@ public:
     std::string RegisterUser(const std::string& login, const std::string& pass_hash);
     User* FindUserByToken(const std::string& token);
     User* FindUserByLogin(const std::string& login);
+    User* FindUserByUserName(const std::string& user_name);
     std::size_t GetCounter() const noexcept;
 private:
     std::string GenerateToken();

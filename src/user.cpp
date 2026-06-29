@@ -1,12 +1,23 @@
+#include <boost/json/object.hpp>
+#include <boost/log/utility/manipulators/add_value.hpp>
 #include "user.h"
+#include "log.h"
 #include <random>
 #include <format>
+
+namespace json = boost::json;
+namespace logging = boost::log;
 
 User::User(std::string login, std::string pass_hash, std::size_t id)
     : login_(std::move(login)),
     pass_hash_(std::move(pass_hash)),
     id_(id)
 {
+    user_name_ = "user_" + id_;
+    json::object obj;
+    obj["code"] = "createUser";
+    obj["message"] = "Create user, username: " + user_name_;
+    BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "Create user");
 }
 
 const std::string& User::GetLogin() const noexcept {
@@ -23,6 +34,10 @@ std::size_t User::GetId() const noexcept {
 
 const std::string& User::GetToken()const noexcept{
     return token_;
+}
+
+const std::string& User::GetUserName()const noexcept {
+    return user_name_;
 }
 
 std::string Users::GenerateToken(){
@@ -63,6 +78,15 @@ User* Users::FindUserByToken(const std::string& token) {
     std::lock_guard lock(mutex_);
     for (auto& [login, user] : users_) {
         if (user.GetToken() == token) {
+            return &user;
+        }
+    }
+    return nullptr;
+}
+
+User* Users::FindUserByUserName(const std::string& user_name) {
+    for (auto& [_, user] : users_) {
+        if (user.GetUserName() == user_name) {
             return &user;
         }
     }

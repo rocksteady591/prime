@@ -7,6 +7,7 @@
 #include <boost/log/trivial.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/log/utility/setup/console.hpp>
+#include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/json.hpp>
 #include <cstddef>
@@ -30,9 +31,17 @@ namespace beast = boost::beast;
 namespace websocket = beast::websocket;
 namespace http = beast::http;
 namespace logging = boost::log;
+namespace keywords = logging::keywords;
 namespace json = boost::json;
 using tcp = net::ip::tcp;
 using namespace std::literals;
+
+void InitLog() {
+    logging::add_console_log(
+        std::clog,
+        keywords::format = &MyFormatter
+    );
+}
 
 std::vector<unsigned char> compute_shared_key(
     const std::vector<unsigned char>& my_sk,
@@ -345,13 +354,7 @@ int main() {
         std::cerr << "Libsodium not init\n";
         return 1;
     }
-    logging::add_console_log(
-        std::clog,
-        logging::keywords::format = &MyFormatter,
-        logging::keywords::auto_flush = true
-    );
-    logging::add_common_attributes();
-
+    InitLog();
     Users users;
     Server server(users);
     server.RunServer();

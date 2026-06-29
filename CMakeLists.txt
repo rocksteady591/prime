@@ -6,11 +6,16 @@ if(WIN32)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_GENERATOR_PLATFORM x64)
+set(WITH_POSTGRESQL ON CACHE INTERNAL "")
+
 
 # Ищем пакеты, предоставленные Conan
 find_package(Boost REQUIRED COMPONENTS json log thread)
 find_package(libsodium REQUIRED)
 find_package(protobuf REQUIRED)
+find_package(libpqxx REQUIRED)
+
 
 # Используем классический макрос (он автоматически подхватит protoc из Conan)
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS message.proto)
@@ -37,8 +42,9 @@ target_link_libraries(http_server
     Boost::json 
     Boost::log 
     Boost::thread 
-    libsodium::libsodium 
+    libsodium::libsodium
     protobuf::libprotobuf
+    libpqxx::pqxx
 )
 target_link_libraries(websocket_server 
     PRIVATE 
@@ -47,4 +53,6 @@ target_link_libraries(websocket_server
     Boost::thread 
     libsodium::libsodium 
     protobuf::libprotobuf
+    libpqxx::pqxx
 )
+

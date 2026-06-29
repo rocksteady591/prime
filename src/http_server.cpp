@@ -9,8 +9,8 @@
 #include <boost/beast/core/bind_handler.hpp>
 #include <boost/beast/core/error.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
-#include <boost/beast/http.hpp>
-#include <cstddef>
+#include <boost/log/utility/setup/console.hpp>
+#include <pqxx/pqxx>
 #include <exception>
 #include <memory>
 #include <thread>
@@ -21,11 +21,19 @@
 
 namespace net = boost::asio;
 namespace http = boost::beast::http;
+namespace logging = boost::log;
+namespace keywords = logging::keywords;
 using tcp = net::ip::tcp;
 
+void InitLog() {
+    logging::add_console_log(
+        std::clog,
+        keywords::format = &MyFormatter
+    );
+}
 
-Session::Session(tcp::socket&& socket, const std::string& base, Users& users)
-    : stream_(std::move(socket)), handler_(RequestHandler(base, users)), users_(users) {
+Session::Session(tcp::socket&& socket, Users& users)
+    : stream_(std::move(socket)), handler_(RequestHandler(users)), users_(users) {
 }
 
 void Session::Run() {
@@ -44,7 +52,7 @@ void Session::OnRead(beast::error_code ec, [[maybe_unused]] std::size_t bytes_tr
         BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj) << logging::add_value("msg", ec.message());
         return;
     }
-    HttpResponse response = handler_.request_handler(std::move(request_));
+    HttpResponse response = handler_.HandleApiPost(std::move(request_));
     Write(response);
 }
 
@@ -76,8 +84,8 @@ void Session::OnWrite(bool closed, beast::error_code ec, [[maybe_unused]] std::s
 }
 
 Listener::Listener(net::io_context& ioc, const tcp::endpoint& endpoint,
-    const std::string& base, Users& users)
-    : ioc_(ioc), acceptor_(net::make_strand(ioc_)), base_path_(base), users_(users) {
+     Users& users)
+    : ioc_(ioc), acceptor_(net::make_strand(ioc_)), users_(users) {
     acceptor_.open(endpoint.protocol());
     acceptor_.set_option(net::socket_base::reuse_address(true));
     acceptor_.bind(endpoint);
@@ -101,7 +109,7 @@ void Listener::OnnAccept(boost::system::error_code ec, tcp::socket socket) {
     DoAccept();
 }
 void Listener::AsyncRunServer(tcp::socket socket) {
-    std::make_shared<Session>(std::move(socket), base_path_, users_)->Run();
+    std::make_shared<Session>(std::move(socket), users_)->Run();
 }
 
 template<typename T>
@@ -115,14 +123,15 @@ void RunWorkers(unsigned n, const T& fn) {
     fn();
 }
 
-int main(/*int argc, const char* argv[]*/) {
-    /*if (argc != 1) {
-        std::cerr << "Dont include static" << std::endl;
-        return 1;
-    }*/
+int main() {
     using namespace std::literals;
     constexpr net::ip::port_type port = 80;
+    InitLog();
     try {
+        pqxx::connection sql("dbname=prime_test user=postgres password=Pavlinsteam16 host=127.0.0.1 port=5432");
+        if (sql.is_open()) {
+            std::cout << "Connected to database successfully: " << sql.dbname() << std::endl;
+        }
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
         tcp::endpoint endpoint{ tcp::v4(), port };
@@ -130,9 +139,8 @@ int main(/*int argc, const char* argv[]*/) {
         obj["port"] = port;
         obj["address"] = endpoint.address().to_string();
         BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "server has started"s);
-        const std::string base_path = "C:\\Users\\rocks\\source\\repos\\rocksteady591\\primal\\static"/*argv[0]*/;
         Users users;
-        std::make_shared<Listener>(ioc, endpoint, base_path, users)->RunServer();
+        std::make_shared<Listener>(ioc, endpoint, users)->RunServer();
 
         RunWorkers(std::max(1u, num_threads), [&ioc] {
             ioc.run();

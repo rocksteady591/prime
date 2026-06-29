@@ -24,7 +24,7 @@ class Session : public std::enable_shared_from_this<Session> {
     using HttpRequest = http::request<http::string_body>;
     using HttpResponse = std::variant <std::shared_ptr< http::response<http::file_body >>, std::shared_ptr<http::response<http::string_body>>>;
 public:
-    Session(tcp::socket&& socket, const std::string& base, Users& users);
+    Session(tcp::socket&& socket, Users& users);
     void Run();
 private:
     RequestHandler handler_;
@@ -40,7 +40,7 @@ private:
 
 class Listener : public std::enable_shared_from_this<Listener> {
 public:
-    Listener(net::io_context& ioc, const tcp::endpoint& endpoint, const std::string& base, Users& users);
+    Listener(net::io_context& ioc, const tcp::endpoint& endpoint, Users& users);
     void RunServer();
 private:
     void DoAccept();
@@ -49,6 +49,5 @@ private:
     void AsyncRunServer(tcp::socket socket);
     net::io_context& ioc_;
     tcp::acceptor acceptor_;
-    std::string base_path_;
     Users& users_;
 };

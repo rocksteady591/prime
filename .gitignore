@@ -4,3 +4,4 @@ out/
 CMakeUserPresets.json
 .vs/
 /CMakeSettings.json
+rec.txt
