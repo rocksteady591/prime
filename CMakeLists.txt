@@ -15,6 +15,7 @@ find_package(Boost REQUIRED COMPONENTS json log thread)
 find_package(libsodium REQUIRED)
 find_package(protobuf REQUIRED)
 find_package(libpqxx REQUIRED)
+find_package(redis++ REQUIRED)
 
 
 # Используем классический макрос (он автоматически подхватит protoc из Conan)
@@ -45,6 +46,7 @@ target_link_libraries(http_server
     libsodium::libsodium
     protobuf::libprotobuf
     libpqxx::pqxx
+    redis++::redis++_static
 )
 target_link_libraries(websocket_server 
     PRIVATE 
@@ -54,5 +56,6 @@ target_link_libraries(websocket_server
     libsodium::libsodium 
     protobuf::libprotobuf
     libpqxx::pqxx
+    redis++::redis++_static
 )
 

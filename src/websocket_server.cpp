@@ -9,6 +9,7 @@
 #include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
+#include <pqxx/pqxx>
 #include <boost/json.hpp>
 #include <cstddef>
 #include <sodium.h>
@@ -35,6 +36,35 @@ namespace keywords = logging::keywords;
 namespace json = boost::json;
 using tcp = net::ip::tcp;
 using namespace std::literals;
+
+void CreateTables(pqxx::connection& sql){
+    using namespace std::literals;
+    pqxx::work txn(sql);
+    json::object obj;
+    try
+    {
+       txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS USERS(
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                login VARCHAR(50) UNIQUE NOT NULL,
+                password_hash VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        )");
+        txn.commit();
+        obj["data"] = "createTable";
+        obj["message"] = "Tables created seccessfully";
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "Tables created seccessfully"s);
+    }
+    catch(const std::exception& e)
+    {
+        obj["error"] = "invalidCreateTables";
+        obj["message"] = e.what();
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "Tables not created seccessfully"s);
+    }
+    
+}
 
 void InitLog() {
     logging::add_console_log(
@@ -355,7 +385,13 @@ int main() {
         return 1;
     }
     InitLog();
-    Users users;
+    pqxx::connection sql("dbname=prime_test user=postgres password=Pavlinsteam16 host=host.docker.internal port=5432");
+        if (!sql.is_open()) {
+            std::cout << "Connected to database not successfully: " << sql.dbname() << std::endl;
+            return 1;
+        }
+    CreateTables(sql);    
+    Users users(sql);
     Server server(users);
     server.RunServer();
     return 0;

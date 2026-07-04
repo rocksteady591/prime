@@ -1,4 +1,5 @@
 #pragma once
+#include <pqxx/pqxx>
 #include <string>
 #include <unordered_map>
 #include <mutex>
@@ -27,12 +28,14 @@ private:
 
 class Users {
 public:
+    Users(pqxx::connection& sql);
     std::string RegisterUser(const std::string& login, const std::string& pass_hash);
     User* FindUserByToken(const std::string& token);
     User* FindUserByLogin(const std::string& login);
     User* FindUserByUserName(const std::string& user_name);
     std::size_t GetCounter() const noexcept;
 private:
+    pqxx::connection& sql_;
     std::string GenerateToken();
     std::unordered_map<std::string, User> users_;   // ключ – логин
     std::size_t counter_ = 0;

@@ -8,6 +8,8 @@
 namespace json = boost::json;
 namespace logging = boost::log;
 
+Users::Users(pqxx::connection& sql) : sql_(sql){}
+
 User::User(std::string login, std::string pass_hash, std::size_t id)
     : login_(std::move(login)),
     pass_hash_(std::move(pass_hash)),

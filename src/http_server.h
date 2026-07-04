@@ -10,6 +10,8 @@
 #include <boost/beast/http/message.hpp>
 #include <boost/beast/http/string_body.hpp>
 #include <boost/system/detail/error_code.hpp>
+#include <pqxx/pqxx>
+
 #include <memory>
 #include <variant>
 

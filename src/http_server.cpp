@@ -10,8 +10,8 @@
 #include <boost/beast/core/error.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/log/utility/setup/console.hpp>
-#include <pqxx/pqxx>
 #include <exception>
+#include <sw/redis++/redis++.h>
 #include <memory>
 #include <thread>
 #include <iostream>
@@ -30,6 +30,35 @@ void InitLog() {
         std::clog,
         keywords::format = &MyFormatter
     );
+}
+
+void CreateTables(pqxx::connection& sql){
+    using namespace std::literals;
+    pqxx::work txn(sql);
+    json::object obj;
+    try
+    {
+       txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS USERS(
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                login VARCHAR(50) UNIQUE NOT NULL,
+                password_hash VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        )");
+        txn.commit();
+        obj["data"] = "createTable";
+        obj["message"] = "Tables created seccessfully";
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "Tables created seccessfully"s);
+    }
+    catch(const std::exception& e)
+    {
+        obj["error"] = "invalidCreateTables";
+        obj["message"] = e.what();
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "Tables not created seccessfully"s);
+    }
+    
 }
 
 Session::Session(tcp::socket&& socket, Users& users)
@@ -125,13 +154,12 @@ void RunWorkers(unsigned n, const T& fn) {
 
 int main() {
     using namespace std::literals;
-    constexpr net::ip::port_type port = 80;
+    constexpr net::ip::port_type port = 8081;
     InitLog();
     try {
-        pqxx::connection sql("dbname=prime_test user=postgres password=Pavlinsteam16 host=127.0.0.1 port=5432");
-        if (sql.is_open()) {
-            std::cout << "Connected to database successfully: " << sql.dbname() << std::endl;
-        }
+        pqxx::connection sql("dbname=prime_test user=postgres password=Pavlinsteam16 host=host.docker.internal port=5432");
+        sw::redis::Redis redis{"tcp://127.0.0.1:6379"};
+        CreateTables(sql);
         const unsigned num_threads = std::thread::hardware_concurrency();
         net::io_context ioc(num_threads);
         tcp::endpoint endpoint{ tcp::v4(), port };
@@ -139,7 +167,7 @@ int main() {
         obj["port"] = port;
         obj["address"] = endpoint.address().to_string();
         BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "server has started"s);
-        Users users;
+        Users users(sql);
         std::make_shared<Listener>(ioc, endpoint, users)->RunServer();
 
         RunWorkers(std::max(1u, num_threads), [&ioc] {
