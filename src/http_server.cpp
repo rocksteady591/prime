@@ -10,20 +10,25 @@
 #include <boost/beast/core/error.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/log/utility/setup/console.hpp>
+#include <boost/redis/src.hpp>
 #include <exception>
-#include <sw/redis++/redis++.h>
+#include <stdexcept>
 #include <memory>
 #include <thread>
 #include <iostream>
 #include <vector>
 #include <variant>
+#include <cstdlib>
 #include "log.h"
+#include "connection_pool.h"
+#include "user.h"
 
 namespace net = boost::asio;
 namespace http = boost::beast::http;
 namespace logging = boost::log;
 namespace keywords = logging::keywords;
 using tcp = net::ip::tcp;
+using pqxx::operator""_zv;
 
 void InitLog() {
     logging::add_console_log(
@@ -34,12 +39,14 @@ void InitLog() {
 
 void CreateTables(pqxx::connection& sql){
     using namespace std::literals;
-    pqxx::work txn(sql);
     json::object obj;
     try
     {
-       txn.exec(R"(
-            CREATE TABLE IF NOT EXISTS USERS(
+        pqxx::work txn(sql);
+        constexpr auto create_index_username = "CREATE INDEX IF NOT EXISTS name_idx ON users (username);"_zv;
+        constexpr auto create_index_login = "CREATE INDEX IF NOT EXISTS name_idx ON users (login);"_zv;
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS users(
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 login VARCHAR(50) UNIQUE NOT NULL,
@@ -47,6 +54,8 @@ void CreateTables(pqxx::connection& sql){
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         )");
+        txn.exec(create_index_username);
+        txn.exec(create_index_login);
         txn.commit();
         obj["data"] = "createTable";
         obj["message"] = "Tables created seccessfully";
@@ -58,7 +67,7 @@ void CreateTables(pqxx::connection& sql){
         obj["message"] = e.what();
         BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "Tables not created seccessfully"s);
     }
-    
+
 }
 
 Session::Session(tcp::socket&& socket, Users& users)
@@ -91,7 +100,7 @@ void Session::Write(HttpResponse response) {
             self->OnWrite(arg->need_eof(), ec, bytes_transfered);
             });
         }, response);
-    
+
 }
 
 void Session::OnWrite(bool closed, beast::error_code ec, [[maybe_unused]] std::size_t bytes_transfered) {
@@ -128,6 +137,7 @@ void Listener::RunServer() {
 void Listener::DoAccept() {
     acceptor_.async_accept(ioc_.get_executor(), beast::bind_front_handler(&Listener::OnnAccept, this->shared_from_this()));
 }
+
 void Listener::OnnAccept(boost::system::error_code ec, tcp::socket socket) {
     if (ec) {
         json::object obj;
@@ -137,6 +147,7 @@ void Listener::OnnAccept(boost::system::error_code ec, tcp::socket socket) {
     AsyncRunServer(std::move(socket));
     DoAccept();
 }
+
 void Listener::AsyncRunServer(tcp::socket socket) {
     std::make_shared<Session>(std::move(socket), users_)->Run();
 }
@@ -157,17 +168,28 @@ int main() {
     constexpr net::ip::port_type port = 8081;
     InitLog();
     try {
-        pqxx::connection sql("dbname=prime_test user=postgres password=Pavlinsteam16 host=host.docker.internal port=5432");
-        sw::redis::Redis redis{"tcp://127.0.0.1:6379"};
-        CreateTables(sql);
+        //take postgres connection url from environment variable
+        const char* pg_db_path = std::getenv("PG_DB_URL");
+        if(pg_db_path == nullptr){
+            throw std::runtime_error("Postgres path is empty");
+        }
+        std::string pg_path(pg_db_path);
         const unsigned num_threads = std::thread::hardware_concurrency();
+        //create connections pool
+        ConnectionPool pool{num_threads, pg_path};
+        {
+            //initialize table and indecies
+            auto wrapper = pool.GetConnection();
+            pqxx::connection& connection = *wrapper;
+            CreateTables(connection);
+        }
         net::io_context ioc(num_threads);
         tcp::endpoint endpoint{ tcp::v4(), port };
         json::object obj;
         obj["port"] = port;
         obj["address"] = endpoint.address().to_string();
         BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "server has started"s);
-        Users users(sql);
+        Users users(pool);
         std::make_shared<Listener>(ioc, endpoint, users)->RunServer();
 
         RunWorkers(std::max(1u, num_threads), [&ioc] {

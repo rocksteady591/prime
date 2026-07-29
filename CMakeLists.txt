@@ -1,61 +1,107 @@
 cmake_minimum_required(VERSION 3.15)
 project(TEST CXX)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if(WIN32)
     # 0x0A00 означает Windows 10 / Windows 11 / Windows Server 2016+
     add_compile_definitions(_WIN32_WINNT=0x0A00)
 endif()
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_GENERATOR_PLATFORM x64)
 set(WITH_POSTGRESQL ON CACHE INTERNAL "")
-
 
 # Ищем пакеты, предоставленные Conan
 find_package(Boost REQUIRED COMPONENTS json log thread)
 find_package(libsodium REQUIRED)
 find_package(protobuf REQUIRED)
 find_package(libpqxx REQUIRED)
-find_package(redis++ REQUIRED)
+find_package(OpenSSL REQUIRED)
 
-
-# Используем классический макрос (он автоматически подхватит protoc из Conan)
+# Генерируем protobuf файлы
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS message.proto)
 
-# Добавляем сгенерированные файлы в исполняемый файл
-add_executable(http_server 
-     "src/http_server.cpp" 
-     "src/http_server.h"
-    ${PROTO_SRCS} 
-    ${PROTO_HDRS}
-  "src/request_handler.h" "src/request_handler.cpp" "src/log.h" "src/user.cpp" "src/user.h")
-add_executable(websocket_server
-    "src/websocket_server.cpp"
-    "src/websocket_server.h"
-    ${PROTO_SRCS}
-    ${PROTO_HDRS} "src/log.h" "src/user.cpp" "src/user.h")
+# --- СОЗДАЕМ ОБЪЕКТНУЮ БИБЛИОТЕКУ ДЛЯ PROTOBUF ---
+add_library(proto_objects OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
-# Указываем, где искать сгенерированный message.pb.h
-target_include_directories(http_server PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_include_directories(websocket_server PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+# ВАЖНО: Добавляем include-директории для protobuf
+target_include_directories(proto_objects PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
 
-target_link_libraries(http_server 
-    PRIVATE 
-    Boost::json 
-    Boost::log 
-    Boost::thread 
+# Добавляем protobuf как зависимость для proto_objects
+target_link_libraries(proto_objects PRIVATE protobuf::libprotobuf)
+
+# --- ОБЩАЯ БИБЛИОТЕКА ДЛЯ ОБЩИХ ФАЙЛОВ ---
+add_library(common_objects OBJECT
+    "src/user.cpp"
+    "src/request_handler.cpp"
+    "src/request_handler.h"
+    "src/connection_pool.h"
+)
+
+target_include_directories(common_objects PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+target_link_libraries(common_objects
+    PRIVATE
+    Boost::json
+    Boost::log
+    Boost::thread
     libsodium::libsodium
     protobuf::libprotobuf
     libpqxx::pqxx
-    redis++::redis++_static
-)
-target_link_libraries(websocket_server 
-    PRIVATE 
-    Boost::json 
-    Boost::log 
-    Boost::thread 
-    libsodium::libsodium 
-    protobuf::libprotobuf
-    libpqxx::pqxx
-    redis++::redis++_static
+    OpenSSL::Crypto
 )
 
+# --- HTTP_SERVER ---
+add_executable(http_server
+    "src/http_server.cpp"
+    "src/http_server.h"
+    "src/log.h"
+    $<TARGET_OBJECTS:proto_objects>
+    $<TARGET_OBJECTS:common_objects>
+)
+
+target_include_directories(http_server PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+target_link_libraries(http_server
+    PRIVATE
+    Boost::json
+    Boost::log
+    Boost::thread
+    libsodium::libsodium
+    protobuf::libprotobuf
+    libpqxx::pqxx
+    OpenSSL::Crypto
+)
+
+# --- WEBSOCKET_SERVER ---
+add_executable(websocket_server
+    "src/websocket_server.cpp"
+    "src/websocket_server.h"
+    "src/log.h"
+    $<TARGET_OBJECTS:proto_objects>
+    $<TARGET_OBJECTS:common_objects>
+)
+
+target_include_directories(websocket_server PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+target_link_libraries(websocket_server
+    PRIVATE
+    Boost::json
+    Boost::log
+    Boost::thread
+    libsodium::libsodium
+    protobuf::libprotobuf
+    libpqxx::pqxx
+    OpenSSL::Crypto
+)

@@ -9,15 +9,18 @@
 #include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
+#include <exception>
 #include <pqxx/pqxx>
 #include <boost/json.hpp>
 #include <cstddef>
 #include <sodium.h>
+#include <stdexcept>
 #include <thread>
 #include <iostream>
 #include <iterator>
 #include <vector>
 #include <string>
+#include <cstdlib>
 #include <memory>
 #include <unordered_map>
 #include <mutex>
@@ -26,6 +29,7 @@
 #include "message.pb.h"
 #include "log.h"
 #include "user.h"
+#include "connection_pool.h"
 
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -36,35 +40,6 @@ namespace keywords = logging::keywords;
 namespace json = boost::json;
 using tcp = net::ip::tcp;
 using namespace std::literals;
-
-void CreateTables(pqxx::connection& sql){
-    using namespace std::literals;
-    pqxx::work txn(sql);
-    json::object obj;
-    try
-    {
-       txn.exec(R"(
-            CREATE TABLE IF NOT EXISTS USERS(
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                login VARCHAR(50) UNIQUE NOT NULL,
-                password_hash VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        )");
-        txn.commit();
-        obj["data"] = "createTable";
-        obj["message"] = "Tables created seccessfully";
-        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "Tables created seccessfully"s);
-    }
-    catch(const std::exception& e)
-    {
-        obj["error"] = "invalidCreateTables";
-        obj["message"] = e.what();
-        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "Tables not created seccessfully"s);
-    }
-    
-}
 
 void InitLog() {
     logging::add_console_log(
@@ -384,15 +359,20 @@ int main() {
         std::cerr << "Libsodium not init\n";
         return 1;
     }
-    InitLog();
-    pqxx::connection sql("dbname=prime_test user=postgres password=Pavlinsteam16 host=host.docker.internal port=5432");
-        if (!sql.is_open()) {
-            std::cout << "Connected to database not successfully: " << sql.dbname() << std::endl;
-            return 1;
+    try{
+        const char* pg_db_path = std::getenv("PG_DB_URL");
+        if(pg_db_path == nullptr){
+            throw std::runtime_error("Postgres path is empty");
         }
-    CreateTables(sql);    
-    Users users(sql);
-    Server server(users);
-    server.RunServer();
+        std::string pg_path(pg_db_path);
+        ConnectionPool pool{std::thread::hardware_concurrency(), pg_path};
+        InitLog();
+        Users users(pool);
+        Server server(users);
+        server.RunServer();
+    }catch(const std::exception& e){
+
+    }
+
     return 0;
 }

@@ -16,6 +16,7 @@
 #include <variant>
 
 #include "request_handler.h"
+#include "user.h"
 
 namespace net = boost::asio;
 using tcp = net::ip::tcp;
