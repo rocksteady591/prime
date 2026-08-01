@@ -38,6 +38,8 @@ add_library(common_objects OBJECT
     "src/request_handler.cpp"
     "src/request_handler.h"
     "src/connection_pool.h"
+    "src/chat.cpp"
+    "src/chat.h"
 )
 
 target_include_directories(common_objects PRIVATE

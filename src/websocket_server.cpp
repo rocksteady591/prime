@@ -30,6 +30,7 @@
 #include "log.h"
 #include "user.h"
 #include "connection_pool.h"
+#include "chat.h"
 
 namespace net = boost::asio;
 namespace beast = boost::beast;
@@ -163,6 +164,10 @@ void Session::SendRaw(const std::string& raw_data) {
         });
 }
 
+ChatManager& Server::GetManager(){
+    return chat_manager_;
+}
+
 void Session::DoRead() {
     ws_.async_read(buffer_, [self = shared_from_this()](beast::error_code ec, std::size_t bytes_read) {
         if (ec) {
@@ -238,8 +243,14 @@ void Session::DoRead() {
             self->DoRead();
             return;
         }
-        std::string message(plaintext.begin(), plaintext.end());  // <--
-
+        std::string message(plaintext.begin(), plaintext.end());
+        int sender = std::stoi(sender_id);
+        int recip = std::stoi(recipient_id);
+        if(sender > recip){
+            std::swap(sender, recip);
+        }
+        int chat_id = self->server_->GetManager().CreateOrGetChat(sender, recip);
+        self->server_->GetManager().AddMessage(std::stoi(sender_id), chat_id, message);
         // Регистрируем сессию, если ещё не зарегистрирована
         //if (self->user_id_.empty() && !sender_id.empty()) {
         //    self->user_id_ = sender_id;
@@ -296,11 +307,12 @@ void Session::DoRead() {
         });
 }
 
-Server::Server(Users& users)
+Server::Server(Users& users, ChatManager& chat_manager)
     :   threads_count_(std::thread::hardware_concurrency()),
         io_context_(threads_count_),
         acceptor_(io_context_, tcp::endpoint{ tcp::v4(), port_ }),
-        users_(users) {}
+        users_(users),
+        chat_manager_(chat_manager){}
 
 Users& Server::GetUsers() {
     return users_;
@@ -368,7 +380,8 @@ int main() {
         ConnectionPool pool{std::thread::hardware_concurrency(), pg_path};
         InitLog();
         Users users(pool);
-        Server server(users);
+        ChatManager chat{pool};
+        Server server(users, chat);
         server.RunServer();
     }catch(const std::exception& e){
 

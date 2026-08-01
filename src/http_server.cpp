@@ -45,6 +45,10 @@ void CreateTables(pqxx::connection& sql){
         pqxx::work txn(sql);
         constexpr auto create_index_username = "CREATE INDEX IF NOT EXISTS name_idx ON users (username);"_zv;
         constexpr auto create_index_login = "CREATE INDEX IF NOT EXISTS name_idx ON users (login);"_zv;
+        constexpr auto create_index_find_chat =
+            "CREATE INDEX IF NOT EXISTS us_pair_idx ON chats (LEAST(user1_id, user2_id), GREATEST(user1_id, user2_id));"_zv;
+        constexpr auto create_index_chat_id = "CREATE INDEX IF NOT EXISTS messages_chat_id_idx ON messages(chat_id);"_zv;
+        constexpr auto create_index_send_at = "CREATE INDEX IF NOT EXISTS messages_sand_at_idx ON messages(sender_id DESC);"_zv;
         txn.exec(R"(
             CREATE TABLE IF NOT EXISTS users(
                 id SERIAL PRIMARY KEY,
@@ -53,7 +57,28 @@ void CreateTables(pqxx::connection& sql){
                 password_hash VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-        )");
+        )"_zv);
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS chats(
+                id SERIAL PRIMARY KEY,
+                user1_id integer REFERENCES users(id) NOT NULL,
+                user2_id integer REFERENCES users(id) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user1_id, user2_id)
+            );
+        )"_zv);
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS messages(
+                id SERIAL PRIMARY KEY,
+                chat_id integer REFERENCES chats(id) NOT NULL,
+                sender_id integer REFERENCES users(id) NOT NULL,
+                content text NOT NULL,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        )"_zv);
+        txn.exec(create_index_chat_id);
+        txn.exec(create_index_send_at);
+        txn.exec(create_index_find_chat);
         txn.exec(create_index_username);
         txn.exec(create_index_login);
         txn.commit();
@@ -91,7 +116,7 @@ void Session::OnRead(beast::error_code ec, [[maybe_unused]] std::size_t bytes_tr
         return;
     }
     HttpResponse response = handler_.HandleApiPost(std::move(request_));
-    Write(response);
+    Write(std::move(response));
 }
 
 void Session::Write(HttpResponse response) {
