@@ -80,6 +80,7 @@ target_link_libraries(http_server
     libsodium::libsodium
     protobuf::libprotobuf
     libpqxx::pqxx
+    OpenSSL::SSL
     OpenSSL::Crypto
 )
 
@@ -105,5 +106,6 @@ target_link_libraries(websocket_server
     libsodium::libsodium
     protobuf::libprotobuf
     libpqxx::pqxx
+    OpenSSL::SSL
     OpenSSL::Crypto
 )

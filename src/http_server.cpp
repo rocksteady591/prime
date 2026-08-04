@@ -4,6 +4,8 @@
 #include <boost/asio/ip//address.hpp>
 #include <boost/asio/ip/basic_endpoint.hpp>
 #include <boost/asio/socket_base.hpp>
+#include <boost/asio/ssl/context.hpp>
+#include <boost/asio/ssl/verify_mode.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/core/bind_handler.hpp>
@@ -11,7 +13,9 @@
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/log/utility/setup/console.hpp>
 #include <boost/redis/src.hpp>
+#include <boost/asio/ssl.hpp>
 #include <exception>
+#include <pqxx/internal/statement_parameters.hxx>
 #include <stdexcept>
 #include <memory>
 #include <thread>
@@ -27,6 +31,7 @@ namespace net = boost::asio;
 namespace http = boost::beast::http;
 namespace logging = boost::log;
 namespace keywords = logging::keywords;
+namespace ssl = net::ssl;
 using tcp = net::ip::tcp;
 using pqxx::operator""_zv;
 
@@ -95,12 +100,22 @@ void CreateTables(pqxx::connection& sql){
 
 }
 
-Session::Session(tcp::socket&& socket, Users& users)
-    : stream_(std::move(socket)), handler_(RequestHandler(users)), users_(users) {
+Session::Session(tcp::socket&& socket, net::ssl::context& ctx, Users& users)
+    : stream_(std::move(socket), ctx), handler_(RequestHandler(users)), users_(users) {
 }
 
 void Session::Run() {
-    Read();
+    auto self = shared_from_this();
+    stream_.async_handshake(net::ssl::stream_base::server, [self](beast::error_code ec){
+            if(!ec){
+                self->Read();
+            }else{
+                json::object obj;
+                obj["Error"] = "sslHandshake";
+                BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                                         << logging::add_value("msg", ec.message());
+            }
+        });
 }
 
 void Session::Read() {
@@ -136,7 +151,7 @@ void Session::OnWrite(bool closed, beast::error_code ec, [[maybe_unused]] std::s
     }
     if (closed) {
         beast::error_code ecd;
-        stream_.socket().shutdown(tcp::socket::shutdown_send, ec);
+        stream_.shutdown(ecd);
         if (ec) {
             json::object obj;
             obj["Error"] = "closeError";
@@ -146,9 +161,9 @@ void Session::OnWrite(bool closed, beast::error_code ec, [[maybe_unused]] std::s
     Read();
 }
 
-Listener::Listener(net::io_context& ioc, const tcp::endpoint& endpoint,
+Listener::Listener(net::io_context& ioc, const tcp::endpoint& endpoint, net::ssl::context& ctx,
      Users& users)
-    : ioc_(ioc), acceptor_(net::make_strand(ioc_)), users_(users) {
+    : ioc_(ioc), acceptor_(net::make_strand(ioc_)), ctx_(ctx), users_(users) {
     acceptor_.open(endpoint.protocol());
     acceptor_.set_option(net::socket_base::reuse_address(true));
     acceptor_.bind(endpoint);
@@ -174,7 +189,7 @@ void Listener::OnnAccept(boost::system::error_code ec, tcp::socket socket) {
 }
 
 void Listener::AsyncRunServer(tcp::socket socket) {
-    std::make_shared<Session>(std::move(socket), users_)->Run();
+    std::make_shared<Session>(std::move(socket), ctx_, users_)->Run();
 }
 
 template<typename T>
@@ -215,7 +230,16 @@ int main() {
         obj["address"] = endpoint.address().to_string();
         BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", "server has started"s);
         Users users(pool);
-        std::make_shared<Listener>(ioc, endpoint, users)->RunServer();
+        ssl::context ctx(ssl::context::tlsv12_server);
+        ctx.set_options(
+                ssl::context::default_workarounds |
+                ssl::context::no_sslv2 |
+                ssl::context::single_dh_use);
+        ctx.use_certificate_file("server.crt", ssl::context::pem);
+        ctx.use_private_key_file("server.key", ssl::context::pem);
+        ctx.set_verify_mode(ssl::verify_none);
+
+        std::make_shared<Listener>(ioc, endpoint, ctx, users)->RunServer();
 
         RunWorkers(std::max(1u, num_threads), [&ioc] {
             ioc.run();
