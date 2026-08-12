@@ -6,12 +6,13 @@
 #include "boost/json/serialize.hpp"
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include "request_handler.h"
+#include "chat.h"
 #include "log.h"
 
 namespace json = boost::json;
 namespace logging = boost::log;
 
-RequestHandler::RequestHandler(Users& users): users_(users) {}
+RequestHandler::RequestHandler(Users& users, ChatManager& chat_manager): users_(users), chat_manager_(chat_manager) {}
 
 RequestHandler::HttpResponse RequestHandler::HandleApiPost(HttpRequest request) {
     using namespace std::literals;
@@ -42,6 +43,8 @@ RequestHandler::HttpResponse RequestHandler::HandleApiPost(HttpRequest request) 
     }
     else if (target == "/api/find_user") {
         return HandleFindUser(request, text_response);
+    }else if(target == "api/get_messages"){
+        return  HandleGetMessages(request, text_response);
     }
     boost::json::object resp;
     resp["code"] = "invalidApiMethod";

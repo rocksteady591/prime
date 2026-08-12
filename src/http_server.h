@@ -19,6 +19,7 @@
 #include <memory>
 #include <variant>
 
+#include "chat.h"
 #include "request_handler.h"
 #include "user.h"
 
@@ -31,7 +32,7 @@ class Session : public std::enable_shared_from_this<Session> {
     using HttpRequest = http::request<http::string_body>;
     using HttpResponse = std::variant <std::shared_ptr< http::response<http::file_body >>, std::shared_ptr<http::response<http::string_body>>>;
 public:
-    Session(tcp::socket&& socket, net::ssl::context& ctx ,Users& users);
+    Session(tcp::socket&& socket, net::ssl::context& ctx ,Users& users, ChatManager& chat_manager);
     void Run();
 private:
     RequestHandler handler_;
@@ -47,7 +48,11 @@ private:
 
 class Listener : public std::enable_shared_from_this<Listener> {
 public:
-    Listener(net::io_context& ioc, const tcp::endpoint& endpoint, net::ssl::context& ctx, Users& users);
+    Listener(net::io_context& ioc,
+        const tcp::endpoint& endpoint,
+        net::ssl::context& ctx,
+        Users& users,
+        ChatManager& chat_manager);
     void RunServer();
 private:
     void DoAccept();
@@ -58,4 +63,5 @@ private:
     tcp::acceptor acceptor_;
     net::ssl::context& ctx_;
     Users& users_;
+    ChatManager& chat_manager_;
 };

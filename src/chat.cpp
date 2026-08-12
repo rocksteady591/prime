@@ -41,7 +41,7 @@ std::vector<Message> ChatManager::GetMessages(int chat_id, int messages_count, i
     for(const auto& row : result){
         int id = row[0].as<int>();
         int chat_id = row[1].as<int>();
-        int sender_id = row[2].as<int>(); 
+        int sender_id = row[2].as<int>();
         std::string content(std::move(row[3].as<std::string>()));
         std::string timestamp = row[4].as<std::string>();
         messages.emplace_back(id, chat_id, sender_id, content, timestamp);

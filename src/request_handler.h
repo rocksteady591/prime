@@ -1,14 +1,19 @@
 #pragma once
 #include <boost/beast/http.hpp>
 #include <boost/json.hpp>
+#include <boost/json/array.hpp>
 #include <boost/json/object.hpp>
 #include "boost/json/serialize.hpp"
 #include <boost/beast.hpp>
 #include <boost/asio.hpp>
+#include <boost/json/parse.hpp>
+#include <exception>
 #include <memory>
 #include <filesystem>
 #include <string>
 #include <variant>
+#include "chat.h"
+#include "connection_pool.h"
 #include "user.h"
 
 namespace beast = boost::beast;
@@ -20,14 +25,14 @@ public:
     using HttpRequest = http::request<http::string_body>;
     using HttpResponse = std::variant <std::shared_ptr< http::response<http::file_body >>, std::shared_ptr<http::response<http::string_body>>>;
 
-    RequestHandler(Users& users);
+    RequestHandler(Users& users, ChatManager& chat_manager);
 
     HttpResponse HandleApiPost(HttpRequest request);
 
 private:
     Users& users_;
+    ChatManager& chat_manager_;
 
-    
     template <typename F>
     HttpResponse HandleRegister(const HttpRequest& request, F&& response) {
         using namespace std::literals;
@@ -71,7 +76,7 @@ private:
             login = std::move(body["login"].as_string().c_str());
             pass_hash = std::move(body["password_hash"].as_string().c_str());
         }
-        catch (const std::exception& e) {
+        catch (const std::exception&) {
             json::object obj;
             obj["code"] = "invalidArgument";
             obj["message"] = "Request parse error";
@@ -100,6 +105,62 @@ private:
         LogHandler(200, "Auth"s, "User is autorized"s);
         return response(http::status::ok, json::serialize(resp));
     }
+
+    template<typename F>
+    HttpResponse HandleGetMessages(const HttpRequest& request, F&& response){
+        using namespace std::literals;
+        int count_messages = 0;
+        int offset = 0;
+        int chat_id = 0;
+        try {
+            json::value body_val = json::parse(request.body());
+            json::object body_obj = body_val.as_object();
+            count_messages = body_obj["count_messages"].as_int64();
+            offset = body_obj["offset"].as_int64();
+            chat_id = body_obj["chat_id"].as_int64();
+        } catch (const std::exception&) {
+            json::object obj;
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Request parse error";
+            LogHandler(400, "invalidArgument"s, "Request parse error"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }
+        std::vector<Message> messages = chat_manager_.GetMessages(chat_id, count_messages, offset);
+        json::array messages_arr;
+        try {
+            messages_arr.reserve(messages.size());
+            for(const Message& msg : messages){
+                json::object j_msg;
+                j_msg["msg_id"] = msg.id;
+                j_msg["chat_id"] = msg.chat_id;
+                j_msg["sender_id"] = msg.sender_id;
+                j_msg["text"] = msg.text;
+                j_msg["send_time"] = msg.send_time;
+                messages_arr.push_back(std::move(j_msg));
+            }
+        } catch (const pqxx::sql_error& e) {
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(400, "BadRequest"s, "Invalid request parametrs or data"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }catch (const pqxx::broken_connection& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(500, "InternalServerError"s, "Database is temporarily unavailable"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }catch (const std::exception& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = "An unexpected error occurred";
+            LogHandler(500, "InternalServerError"s, "An unexpected error occurred"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }
+        LogHandler(200, "GetMessages"s, "Messages is contains"s);
+        return response(http::status::ok, json::serialize(messages_arr));
+    }
+
     template <typename F>
     HttpResponse HandleFindUser(const HttpRequest& request, F&& response) {
         using namespace std::literals;

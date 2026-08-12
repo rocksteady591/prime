@@ -1,0 +1,109 @@
+{
+  "date": "2026-08-05T00:07:00.176041+04:00",
+  "data": {
+    "/Users/philingosling/Documents/primal/CMakeLists.txt": [
+      {
+        "label": "CMAKE_EXPORT_COMPILE_COMMANDS",
+        "kind": 12,
+        "detail": "Value",
+        "documentation": "defined variable\nfrom: /Users/philingosling/Documents/primal/CMakeLists.txt"
+      },
+      {
+        "label": "CMAKE_CXX_STANDARD",
+        "kind": 12,
+        "detail": "Value",
+        "documentation": "defined variable\nfrom: /Users/philingosling/Documents/primal/CMakeLists.txt"
+      },
+      {
+        "label": "CMAKE_GENERATOR_PLATFORM",
+        "kind": 12,
+        "detail": "Value",
+        "documentation": "defined variable\nfrom: /Users/philingosling/Documents/primal/CMakeLists.txt"
+      },
+      {
+        "label": "WITH_POSTGRESQL",
+        "kind": 12,
+        "detail": "Value",
+        "documentation": "defined variable\nfrom: /Users/philingosling/Documents/primal/CMakeLists.txt"
+      },
+      {
+        "label": "Boost::json",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package from: Boost"
+      },
+      {
+        "label": "Boost::log",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package from: Boost"
+      },
+      {
+        "label": "Boost::thread",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package from: Boost"
+      },
+      {
+        "label": "Boost_LIBRARIES",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: Boost"
+      },
+      {
+        "label": "Boost_INCLUDE_DIRS",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: Boost"
+      },
+      {
+        "label": "libsodium_LIBRARIES",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: libsodium"
+      },
+      {
+        "label": "libsodium_INCLUDE_DIRS",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: libsodium"
+      },
+      {
+        "label": "protobuf_LIBRARIES",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: protobuf"
+      },
+      {
+        "label": "protobuf_INCLUDE_DIRS",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: protobuf"
+      },
+      {
+        "label": "libpqxx_LIBRARIES",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: libpqxx"
+      },
+      {
+        "label": "libpqxx_INCLUDE_DIRS",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: libpqxx"
+      },
+      {
+        "label": "OpenSSL_LIBRARIES",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: OpenSSL"
+      },
+      {
+        "label": "OpenSSL_INCLUDE_DIRS",
+        "kind": 6,
+        "detail": "Variable",
+        "documentation": "package: OpenSSL"
+      }
+    ]
+  }
+}

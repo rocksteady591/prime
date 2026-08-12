@@ -1,0 +1,73 @@
+{
+  "date": "2026-08-05T00:07:00.176238+04:00",
+  "data": {
+    "CMAKE_EXPORT_COMPILE_COMMANDS": {
+      "location": {
+        "uri": "file:///Users/philingosling/Documents/primal/CMakeLists.txt",
+        "range": {
+          "start": {
+            "line": 2,
+            "character": 4
+          },
+          "end": {
+            "line": 2,
+            "character": 33
+          }
+        }
+      },
+      "document_info": "defined variable\nfrom: /Users/philingosling/Documents/primal/CMakeLists.txt",
+      "is_function": false
+    },
+    "CMAKE_GENERATOR_PLATFORM": {
+      "location": {
+        "uri": "file:///Users/philingosling/Documents/primal/CMakeLists.txt",
+        "range": {
+          "start": {
+            "line": 10,
+            "character": 4
+          },
+          "end": {
+            "line": 10,
+            "character": 28
+          }
+        }
+      },
+      "document_info": "defined variable\nfrom: /Users/philingosling/Documents/primal/CMakeLists.txt",
+      "is_function": false
+    },
+    "CMAKE_CXX_STANDARD": {
+      "location": {
+        "uri": "file:///Users/philingosling/Documents/primal/CMakeLists.txt",
+        "range": {
+          "start": {
+            "line": 9,
+            "character": 4
+          },
+          "end": {
+            "line": 9,
+            "character": 22
+          }
+        }
+      },
+      "document_info": "defined variable\nfrom: /Users/philingosling/Documents/primal/CMakeLists.txt",
+      "is_function": false
+    },
+    "WITH_POSTGRESQL": {
+      "location": {
+        "uri": "file:///Users/philingosling/Documents/primal/CMakeLists.txt",
+        "range": {
+          "start": {
+            "line": 11,
+            "character": 4
+          },
+          "end": {
+            "line": 11,
+            "character": 19
+          }
+        }
+      },
+      "document_info": "defined variable\nfrom: /Users/philingosling/Documents/primal/CMakeLists.txt",
+      "is_function": false
+    }
+  }
+}

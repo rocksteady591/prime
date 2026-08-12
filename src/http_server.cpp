@@ -26,6 +26,7 @@
 #include "log.h"
 #include "connection_pool.h"
 #include "user.h"
+#include "chat.h"
 
 namespace net = boost::asio;
 namespace http = boost::beast::http;
@@ -100,8 +101,8 @@ void CreateTables(pqxx::connection& sql){
 
 }
 
-Session::Session(tcp::socket&& socket, net::ssl::context& ctx, Users& users)
-    : stream_(std::move(socket), ctx), handler_(RequestHandler(users)), users_(users) {
+Session::Session(tcp::socket&& socket, net::ssl::context& ctx, Users& users, ChatManager& chat_manager)
+    : stream_(std::move(socket), ctx), handler_(RequestHandler(users, chat_manager)), users_(users) {
 }
 
 void Session::Run() {
@@ -162,8 +163,8 @@ void Session::OnWrite(bool closed, beast::error_code ec, [[maybe_unused]] std::s
 }
 
 Listener::Listener(net::io_context& ioc, const tcp::endpoint& endpoint, net::ssl::context& ctx,
-     Users& users)
-    : ioc_(ioc), acceptor_(net::make_strand(ioc_)), ctx_(ctx), users_(users) {
+     Users& users, ChatManager& chat_manager)
+    : ioc_(ioc), acceptor_(net::make_strand(ioc_)), ctx_(ctx), users_(users), chat_manager_(chat_manager) {
     acceptor_.open(endpoint.protocol());
     acceptor_.set_option(net::socket_base::reuse_address(true));
     acceptor_.bind(endpoint);
@@ -189,7 +190,7 @@ void Listener::OnnAccept(boost::system::error_code ec, tcp::socket socket) {
 }
 
 void Listener::AsyncRunServer(tcp::socket socket) {
-    std::make_shared<Session>(std::move(socket), ctx_, users_)->Run();
+    std::make_shared<Session>(std::move(socket), ctx_, users_, chat_manager_)->Run();
 }
 
 template<typename T>
@@ -239,7 +240,8 @@ int main() {
         ctx.use_private_key_file("server.key", ssl::context::pem);
         ctx.set_verify_mode(ssl::verify_none);
 
-        std::make_shared<Listener>(ioc, endpoint, ctx, users)->RunServer();
+        ChatManager chat_manager(pool);
+        std::make_shared<Listener>(ioc, endpoint, ctx, users, chat_manager)->RunServer();
 
         RunWorkers(std::max(1u, num_threads), [&ioc] {
             ioc.run();
