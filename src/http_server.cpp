@@ -236,8 +236,8 @@ int main() {
                 ssl::context::default_workarounds |
                 ssl::context::no_sslv2 |
                 ssl::context::single_dh_use);
-        ctx.use_certificate_file("server.crt", ssl::context::pem);
-        ctx.use_private_key_file("server.key", ssl::context::pem);
+        ctx.use_certificate_file("/Users/philingosling/Documents/primal/server.crt", ssl::context::pem);
+        ctx.use_private_key_file("/Users/philingosling/Documents/primal/server.key", ssl::context::pem);
         ctx.set_verify_mode(ssl::verify_none);
 
         ChatManager chat_manager(pool);

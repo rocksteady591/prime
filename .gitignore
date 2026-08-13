@@ -5,3 +5,6 @@ CMakeUserPresets.json
 .vs/
 /CMakeSettings.json
 rec.txt
+server.crt
+.gitignore
+server.key

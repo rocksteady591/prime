@@ -107,6 +107,60 @@ private:
     }
 
     template<typename F>
+    HttpResponse HandleGetChats(const HttpRequest& request, F&& response){
+        using namespace std::literals;
+        int user_id = 0;
+        try{
+            json::value body_val = json::parse(request.body());
+            json::object body_obj = body_val.as_object();
+            user_id = body_obj["user_id"].as_int64();
+        }catch(const std::exception&){
+            json::object obj;
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Request parse error";
+            LogHandler(400, "invalidArgument"s, "Request parse error"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }
+        try
+        {
+            std::vector<ChatInfo> chats = chat_manager_.GetChats(user_id);
+            json::array res_arr;
+            for(const ChatInfo& chat : chats){
+                json::object o_chat;
+                o_chat["id"] = chat.id;
+                o_chat["user1_id"] = chat.user1_id;
+                o_chat["user2_id"] = chat.user2_id;
+                o_chat["create_timestamp"] = chat.create_chat_time;
+                res_arr.push_back(std::move(o_chat));
+            }
+            LogHandler(200, "GetChats"s, "Chats have been received"s);
+            return response(http::status::ok, json::serialize(res_arr));
+        }
+        catch(const pqxx::sql_error& e)
+        {
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(400, "BadRequest"s, "Invalid request parametrs or data"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }catch(const pqxx::broken_connection& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(500, "InternalServerError"s, "Database is temporarily unavailable"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }catch (const std::exception& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = "An unexpected error occurred";
+            LogHandler(500, "InternalServerError"s, "An unexpected error occurred"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }
+        
+    }
+
+
+    template<typename F>
     HttpResponse HandleGetMessages(const HttpRequest& request, F&& response){
         using namespace std::literals;
         int count_messages = 0;
