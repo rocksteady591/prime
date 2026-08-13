@@ -99,6 +99,7 @@
 - PostgreSQL (локально или удалённо)
 - libpqxx, Boost (Asio, Beast, Log), libsodium, OpenSSL
 
+### Сборка
 
 для сборки проекта должен быть установлен CMake, Conan
 если конан установили в первый раз в терминале выполните команду conan profile detect --force
