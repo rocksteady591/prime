@@ -60,7 +60,8 @@ void CreateTables(pqxx::connection& sql){
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 login VARCHAR(50) UNIQUE NOT NULL,
-                password_hash VARCHAR(255),
+                password_hash VARCHAR(255) NOT NULL,
+                token text,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         )"_zv);

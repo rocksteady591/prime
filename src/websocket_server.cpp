@@ -249,7 +249,7 @@ void Session::DoRead() {
         if(sender > recip){
             std::swap(sender, recip);
         }
-        
+
         int chat_id = self->server_->GetManager().CreateOrGetChat(sender, recip);
         self->server_->GetManager().AddMessage(std::stoi(sender_id), chat_id, message);
         // Регистрируем сессию, если ещё не зарегистрирована
@@ -339,6 +339,7 @@ void Server::RunServer() {
     obj["address"] = acceptor_.local_endpoint().address().to_string();
     BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
         << logging::add_value("msg", "server is run"s);
+
     do_accept();
 
     for (size_t i = 0; i < threads_count_; ++i) {
@@ -381,11 +382,16 @@ int main() {
         ConnectionPool pool{std::thread::hardware_concurrency(), pg_path};
         InitLog();
         Users users(pool);
+        
         ChatManager chat{pool};
         Server server(users, chat);
         server.RunServer();
     }catch(const std::exception& e){
-
+        json::object obj;
+        obj["error"] = "Server dont run";
+        obj["message"] = e.what();
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+            << logging::add_value("msg", "server dont run"s);
     }
 
     return 0;

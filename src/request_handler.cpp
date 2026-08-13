@@ -43,8 +43,10 @@ RequestHandler::HttpResponse RequestHandler::HandleApiPost(HttpRequest request) 
     }
     else if (target == "/api/find_user") {
         return HandleFindUser(request, text_response);
-    }else if(target == "api/get_messages"){
+    }else if(target == "/api/get_messages"){
         return  HandleGetMessages(request, text_response);
+    }else if(target == "/api/get_chats"){
+        return HandleGetChats(request, text_response);
     }
     boost::json::object resp;
     resp["code"] = "invalidApiMethod";
