@@ -11,3 +11,4 @@ server.key
 .cache/
 .idea/
 /compile_comands.json
+compile_commands.json

@@ -57,8 +57,17 @@ private:
             LogHandler(400, "invalidArgument"s, "login and password_hash required"s);
             return response(http::status::bad_request, json::serialize(obj));
         }
+        std::string token;
+        try {
+            token = users_.RegisterUser(login, pass_hash);
+        } catch (const std::exception& e) {
+            json::object obj;
+            obj["code"] = "registrationFailed";
+            obj["message"] = e.what();
+            LogHandler(400, "registrationFailed"s, e.what());
+            return response(http::status::bad_request, json::serialize(obj));
+        }
 
-        std::string token = users_.RegisterUser(login, pass_hash);
         boost::json::object resp;
         resp["token"] = token;
         resp["user_id"] = std::to_string(users_.FindUserByLogin(login)->GetId());
@@ -156,7 +165,7 @@ private:
             LogHandler(500, "InternalServerError"s, "An unexpected error occurred"s);
             return response(http::status::internal_server_error, json::serialize(obj));
         }
-        
+
     }
 
 

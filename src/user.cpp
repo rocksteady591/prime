@@ -110,6 +110,7 @@ std::string Users::RegisterUser(const std::string& login, const std::string& pas
         obj["error"] = e.what();
         obj["message"] = "Database is contains user";
         BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj) << logging::add_value("msg", "User dont register");
+        throw;
     }
     User user(login, pass_hash, id, user_name);
     user.SetToken(token);
@@ -126,6 +127,30 @@ void User::SetToken(const std::string& token) {
     token_ = token;
 }
 
+User* Users::LoadUserByToken(const std::string& token){
+    try{
+        auto wrapper = pool_.GetConnection();
+        pqxx::connection& conn = *wrapper;
+        pqxx::read_transaction r(conn);
+        constexpr auto query = "SELECT id, username, login, password_hash, token FROM users WHERE token=$1;"_zv;
+        auto res = r.exec_params(query, token);
+        if(res.empty()){
+            return nullptr;
+        }
+        size_t u_id = res[0][0].as<size_t>();
+        std::string u_username = res[0][1].as<std::string>();
+        std::string u_login = res[0][2].as<std::string>();
+        std::string u_password = res[0][3].as<std::string>();
+        std::string u_token = res[0][4].as<std::string>();
+        User user{u_login, u_password, u_id, u_username};
+        user.SetToken(u_token);
+        auto [it, inserted] = users_.emplace(u_login, std::move(user));
+        return &it->second;
+    }catch(const std::exception&){
+        return nullptr;
+    }
+}
+
 User* Users::FindUserByToken(const std::string& token) {
     std::scoped_lock lock(mutex_);
     for (auto& [login, user] : users_) {
@@ -133,7 +158,8 @@ User* Users::FindUserByToken(const std::string& token) {
             return &user;
         }
     }
-    return nullptr;
+
+    return LoadUserByToken(token);
 }
 
 User* Users::FindUserByUserName(const std::string& user_name) {

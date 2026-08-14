@@ -44,4 +44,5 @@ private:
     std::unordered_map<std::string, User> users_;   // ключ – логин
     std::size_t counter_ = 0;
     mutable std::mutex mutex_;
+    User* LoadUserByToken(const std::string& token);
 };
