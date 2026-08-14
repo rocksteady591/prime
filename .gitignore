@@ -8,3 +8,6 @@ rec.txt
 server.crt
 .gitignore
 server.key
+.cache/
+.idea/
+/compile_comands.json
