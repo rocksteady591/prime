@@ -249,7 +249,8 @@ void Session::DoRead() {
         if(sender > recip){
             std::swap(sender, recip);
         }
-
+        //тут создается новый или возвращается уже существующий чат
+        //принимает айди отправителя и получателя
         int chat_id = self->server_->GetManager().CreateOrGetChat(sender, recip);
         self->server_->GetManager().AddMessage(std::stoi(sender_id), chat_id, message);
         // Регистрируем сессию, если ещё не зарегистрирована

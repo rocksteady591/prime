@@ -250,6 +250,8 @@ private:
         }
         json::object body_response;
         body_response["user_login"] = user->GetLogin();
+        body_response["username"] = user->GetUserName();
+        body_response["user_id"] = user->GetId();
         LogHandler(200, "containsUser"s, "User is contains"s);
         return response(http::status::ok, json::serialize(body_response));
     }
