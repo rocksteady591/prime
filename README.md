@@ -109,7 +109,6 @@
 cd build
 
 под все системы: cmake .. -G "Ninja" -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug или cmake --preset conan-debug
-или conan install . --output-folder=build --build=missing -s build_type=Debug -s compiler.cppstd=23
 
 под xcode: cmake .. -G Xcode \
   -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake \
