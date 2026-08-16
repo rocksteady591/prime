@@ -12,3 +12,4 @@ server.key
 .idea/
 /compile_comands.json
 compile_commands.json
+.DS_Store

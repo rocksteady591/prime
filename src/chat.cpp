@@ -15,17 +15,24 @@ int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
     auto wrapper = pool_.GetConnection();
     pqxx::connection& conn = *wrapper;
     pqxx::work w(conn);
-    auto insert_res = w.exec_params(
-        "INSERT INTO chats (user1_id, user2_id) VALUES ($1, $2) ON CONFLICT (user1_id, user2_id) DO NOTHING RETURNING id;"_zv,
-        user1_id, user2_id);
     int chat_id = 0;
-    if(insert_res.empty()){
-        pqxx::result select_res = w.exec_params("SELECT id FROM chats WHERE user1_id = $1 AND user2_id = $2;"_zv,
-            user1_id, user2_id);
-        chat_id = select_res[0][0].as<int>();
-    }else{
-        chat_id = insert_res[0][0].as<int>();
-    }
+    auto result = w.exec_params(
+    R"(
+        WITH inserted AS (
+            INSERT INTO chats (user1_id, user2_id)
+            VALUES ($1, $2)
+            ON CONFLICT (user1_id, user2_id) DO NOTHING
+            RETURNING id
+        )
+        SELECT id FROM inserted
+        UNION ALL
+        SELECT id FROM chats
+        WHERE user1_id = $1 AND user2_id = $2
+        LIMIT 1;
+    )"_zv,
+    user1_id, user2_id
+    );
+    chat_id = result[0][0].as<int>();
     w.commit();
     return chat_id;
 }
