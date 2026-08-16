@@ -1,0 +1,9 @@
+Copyright (c) 2026 Pavel Galkin
+
+All rights reserved.
+
+This software and its source code are proprietary and confidential.
+Unauthorized copying, transferring, or reproduction of this software,
+via any medium, is strictly prohibited.
+
+The software is provided "AS IS", without warranty of any kind.

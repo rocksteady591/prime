@@ -20,7 +20,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/api': {
-        target: 'http://localhost:80',   // адрес HTTP-сервера
+        target: 'https://localhost:8081',   // адрес HTTP-сервера
         changeOrigin: true,
         secure: false,
       },

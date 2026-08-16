@@ -4,3 +4,12 @@ out/
 CMakeUserPresets.json
 .vs/
 /CMakeSettings.json
+rec.txt
+server.crt
+.gitignore
+server.key
+.cache/
+.idea/
+/compile_comands.json
+compile_commands.json
+.DS_Store

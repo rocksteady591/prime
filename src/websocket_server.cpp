@@ -7,15 +7,20 @@
 #include <boost/log/trivial.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/log/utility/setup/console.hpp>
+#include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
+#include <exception>
+#include <pqxx/pqxx>
 #include <boost/json.hpp>
 #include <cstddef>
 #include <sodium.h>
+#include <stdexcept>
 #include <thread>
 #include <iostream>
 #include <iterator>
 #include <vector>
 #include <string>
+#include <cstdlib>
 #include <memory>
 #include <unordered_map>
 #include <mutex>
@@ -24,15 +29,25 @@
 #include "message.pb.h"
 #include "log.h"
 #include "user.h"
+#include "connection_pool.h"
+#include "chat.h"
 
 namespace net = boost::asio;
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
 namespace http = beast::http;
 namespace logging = boost::log;
+namespace keywords = logging::keywords;
 namespace json = boost::json;
 using tcp = net::ip::tcp;
 using namespace std::literals;
+
+void InitLog() {
+    logging::add_console_log(
+        std::clog,
+        keywords::format = &MyFormatter
+    );
+}
 
 std::vector<unsigned char> compute_shared_key(
     const std::vector<unsigned char>& my_sk,
@@ -149,6 +164,10 @@ void Session::SendRaw(const std::string& raw_data) {
         });
 }
 
+ChatManager& Server::GetManager(){
+    return chat_manager_;
+}
+
 void Session::DoRead() {
     ws_.async_read(buffer_, [self = shared_from_this()](beast::error_code ec, std::size_t bytes_read) {
         if (ec) {
@@ -224,8 +243,16 @@ void Session::DoRead() {
             self->DoRead();
             return;
         }
-        std::string message(plaintext.begin(), plaintext.end());  // <--
-
+        std::string message(plaintext.begin(), plaintext.end());
+        int sender = std::stoi(sender_id);
+        int recip = std::stoi(recipient_id);
+        if(sender > recip){
+            std::swap(sender, recip);
+        }
+        //тут создается новый или возвращается уже существующий чат
+        //принимает айди отправителя и получателя
+        int chat_id = self->server_->GetManager().CreateOrGetChat(sender, recip);
+        self->server_->GetManager().AddMessage(std::stoi(sender_id), chat_id, message);
         // Регистрируем сессию, если ещё не зарегистрирована
         //if (self->user_id_.empty() && !sender_id.empty()) {
         //    self->user_id_ = sender_id;
@@ -282,11 +309,12 @@ void Session::DoRead() {
         });
 }
 
-Server::Server(Users& users)
+Server::Server(Users& users, ChatManager& chat_manager)
     :   threads_count_(std::thread::hardware_concurrency()),
         io_context_(threads_count_),
         acceptor_(io_context_, tcp::endpoint{ tcp::v4(), port_ }),
-        users_(users) {}
+        users_(users),
+        chat_manager_(chat_manager){}
 
 Users& Server::GetUsers() {
     return users_;
@@ -312,6 +340,7 @@ void Server::RunServer() {
     obj["address"] = acceptor_.local_endpoint().address().to_string();
     BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
         << logging::add_value("msg", "server is run"s);
+
     do_accept();
 
     for (size_t i = 0; i < threads_count_; ++i) {
@@ -345,15 +374,26 @@ int main() {
         std::cerr << "Libsodium not init\n";
         return 1;
     }
-    logging::add_console_log(
-        std::clog,
-        logging::keywords::format = &MyFormatter,
-        logging::keywords::auto_flush = true
-    );
-    logging::add_common_attributes();
+    try{
+        const char* pg_db_path = std::getenv("PG_DB_URL");
+        if(pg_db_path == nullptr){
+            throw std::runtime_error("Postgres path is empty");
+        }
+        std::string pg_path(pg_db_path);
+        ConnectionPool pool{std::thread::hardware_concurrency(), pg_path};
+        InitLog();
+        Users users(pool);
+        
+        ChatManager chat{pool};
+        Server server(users, chat);
+        server.RunServer();
+    }catch(const std::exception& e){
+        json::object obj;
+        obj["error"] = "Server dont run";
+        obj["message"] = e.what();
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+            << logging::add_value("msg", "server dont run"s);
+    }
 
-    Users users;
-    Server server(users);
-    server.RunServer();
     return 0;
 }

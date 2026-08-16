@@ -12,6 +12,8 @@
 #include <string>
 #include <unordered_map>
 #include <mutex>
+#include "chat.h"
+#include "connection_pool.h"
 #include "user.h"
 
 namespace net = boost::asio;
@@ -42,12 +44,13 @@ private:
 
 class Server {
 public:
-    explicit Server(Users& users);
+    explicit Server(Users& users, ChatManager& chat_manager);
     void RunServer();
     void RegisterSession(const std::string& user_id, std::shared_ptr<Session> session);
     void UnregisterSession(const std::string& user_id);
     std::shared_ptr<Session> FindSession(const std::string& user_id);
     Users& GetUsers();
+    ChatManager& GetManager();
 private:
     unsigned short threads_count_;
     const unsigned short port_ = 9000;
@@ -58,4 +61,5 @@ private:
     std::mutex sessions_mutex_;
     void do_accept();
     Users& users_;
+    ChatManager& chat_manager_;
 };
