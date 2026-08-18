@@ -37,6 +37,21 @@ int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
     return chat_id;
 }
 
+std::vector<ContactInfo> ChatManager::GetContacts(int user_id){
+    std::vector<ContactInfo> contacts;
+    constexpr auto query = "SELECT u.username, u.login FROM users u JOIN contacts c ON c.contact_id = u.id WHERE c.user_id = $1;"_zv;
+    auto wrapper = pool_.GetConnection();
+    pqxx::read_transaction r(*wrapper);
+    auto result = r.exec(query, user_id);
+    contacts.reserve(result.size());
+    for(const auto& row : result){
+        std::string username = row[0].as<std::string>();
+        std::string login = row[1].as<std::string>();
+        contacts.emplace_back(username, login);
+    }
+    return contacts;
+}
+
 std::vector<Message> ChatManager::GetMessages(int chat_id, int messages_count, int offset){
     std::vector<Message> messages;
     constexpr auto select_messages_query = "SELECT id, chat_id, sender_id, content, created_at FROM messages WHERE chat_id=$1 LIMIT $2 OFFSET $3;"_zv;

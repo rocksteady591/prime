@@ -10,6 +10,8 @@ server.crt
 server.key
 .cache/
 .idea/
+rust_scr/
 /compile_comands.json
 compile_commands.json
+.DS_Store
 .DS_Store

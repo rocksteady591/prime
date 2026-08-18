@@ -1,5 +1,6 @@
 #pragma once
 #include <boost/beast/http.hpp>
+#include <boost/beast/http/status.hpp>
 #include <boost/json.hpp>
 #include <boost/json/array.hpp>
 #include <boost/json/object.hpp>
@@ -166,6 +167,61 @@ private:
             return response(http::status::internal_server_error, json::serialize(obj));
         }
 
+    }
+
+    template<typename F>
+    HttpResponse HandleGetContacts(const HttpRequest& request, F&& response){
+        using namespace std::literals;
+        std::string token;
+        json::object obj;
+        try{
+            json::value body_val = json::parse(request.body());
+            json::object body_obj = body_val.as_object();
+            token = body_obj["token"].as_string();
+        }catch(const std::exception& e){
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Request parse error";
+            LogHandler(400, "invalidArgument"s, "Request parse error"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }
+        User* user = users_.FindUserByToken(token);
+        if(user == nullptr){
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Non-existent user";
+            LogHandler(400, "invalidArgument"s, "Non-existent user"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }
+        json::array result;
+        try{
+            std::vector<ContactInfo> contacts = chat_manager_.GetContacts(user->GetId());
+            result.reserve(contacts.size());
+            for(const ContactInfo& contact: contacts){
+                json::object j_contact;
+                j_contact["username"] = contact.username;
+                j_contact["login"] = contact.login;
+                result.push_back(std::move(j_contact));
+            }
+        }catch (const pqxx::sql_error& e) {
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(400, "BadRequest"s, "Invalid request parametrs or data"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }catch (const pqxx::broken_connection& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(500, "InternalServerError"s, "Database is temporarily unavailable"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }catch (const std::exception& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = "An unexpected error occurred";
+            LogHandler(500, "InternalServerError"s, "An unexpected error occurred"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }
+        LogHandler(200, "GetContacts", "Contacts is contains");
+        return response(http::status::ok, json::serialize(result));
     }
 
 

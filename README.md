@@ -106,11 +106,12 @@
 
 далее универсальная команда: conan install . --output-folder=build --build=missing --build=boost -s build_type=Debug -s arch=x86_64 -s compiler.cppstd=23 -c tools.cmake.cmaketoolchain:generator="Ninja"
 
-cd build
+более короткая под все системы
+conan install . --build=missing --output-folder=build -s build_type=Debug -s compiler.cppstd=23
 
-под все системы: cmake .. -G "Ninja" -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug или cmake --preset conan-debug
+под все системы: cmake --preset conan-debug или cd build потом cmake .. -G "Ninja" -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug
 
-под xcode: cmake .. -G Xcode \
+под xcode: cd build потом cmake .. -G Xcode \
   -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_C_COMPILER=clang \

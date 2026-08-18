@@ -83,6 +83,13 @@ void CreateTables(pqxx::connection& sql){
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         )"_zv);
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS contacts(
+                user_id integer REFERENCES users(id) NOT NULL ON DELETE CASCADE,
+                contact_id integer REFERENCES users(id) NOT NULL ON DELETE CASCADE,
+                PRIMARY KEY (user_id, contact_id)
+            );
+            )"_zv);
         txn.exec(create_index_chat_id);
         txn.exec(create_index_send_at);
         txn.exec(create_index_find_chat);
