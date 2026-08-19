@@ -85,8 +85,8 @@ void CreateTables(pqxx::connection& sql){
         )"_zv);
         txn.exec(R"(
             CREATE TABLE IF NOT EXISTS contacts(
-                user_id integer REFERENCES users(id) NOT NULL ON DELETE CASCADE,
-                contact_id integer REFERENCES users(id) NOT NULL ON DELETE CASCADE,
+                user_id integer REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+                contact_id integer REFERENCES users(id) ON DELETE CASCADE NOT NULL,
                 PRIMARY KEY (user_id, contact_id)
             );
             )"_zv);
