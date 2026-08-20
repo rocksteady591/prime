@@ -15,8 +15,8 @@ public:
 
         ConnectionWrapper(const ConnectionWrapper&) = delete;
         ConnectionWrapper& operator=(const ConnectionWrapper&) = delete;
-        ConnectionWrapper(const ConnectionWrapper&&) = default;
-        ConnectionWrapper& operator=(const ConnectionWrapper&&) = default;
+        ConnectionWrapper(ConnectionWrapper&&) = default;
+        ConnectionWrapper& operator=(ConnectionWrapper&&) = default;
 
         pqxx::connection& operator*() const& noexcept{
             return *connection_;

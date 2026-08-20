@@ -13,3 +13,6 @@ server.key
 /compile_comands.json
 compile_commands.json
 .DS_Store
+cert.pem
+key.pem
+messenger-client/.vite/

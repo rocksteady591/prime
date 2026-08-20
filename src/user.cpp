@@ -158,8 +158,13 @@ User* Users::FindUserByToken(const std::string& token) {
             return &user;
         }
     }
-
-    return LoadUserByToken(token);
+    User* loaded = LoadUserByToken(token);
+    // Логируем результат
+    json::object obj;
+    obj["found"] = loaded != nullptr;
+    BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+                            << logging::add_value("msg", "FindUserByToken result");
+    return loaded;
 }
 
 User* Users::FindUserByUserName(const std::string& user_name) {

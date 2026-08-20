@@ -1,18 +1,19 @@
 <template>
     <MainLayout>
         <template #sidebar>
-            <Sidebar title="НАСТРОЙКИ"
-                     :items="settingsItems"
-                     :activeId="null"
-                     @select="() => {}" />
+            <Sidebar title="Настройки" :items="settingsItems" :activeId="null" />
         </template>
         <template #main>
-            <div class="placeholder">Здесь будут настройки</div>
+            <div class="placeholder-container">
+                <i class="pi pi-cog" style="font-size: 4rem; color: var(--surface-400);" />
+                <h2>Настройки</h2>
+                <p>Здесь будут доступны настройки приложения</p>
+            </div>
         </template>
     </MainLayout>
 </template>
 
-<script setup lang="ts">
+<script setup>
     import MainLayout from '@/components/layout/MainLayout.vue'
     import Sidebar from '@/components/sidebar/Sidebar.vue'
 
@@ -24,13 +25,19 @@
 </script>
 
 <style scoped>
-    .placeholder {
+    .placeholder-container {
         flex: 1;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        font-size: 18px;
-        color: #888;
-        background-color: #f9f9f9;
+        background: var(--surface-ground);
+        color: var(--text-color-secondary);
+        gap: 0.5rem;
     }
+
+        .placeholder-container h2 {
+            margin: 0.5rem 0 0;
+            font-weight: 400;
+        }
 </style>

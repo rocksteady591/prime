@@ -15,6 +15,12 @@ int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
     auto wrapper = pool_.GetConnection();
     pqxx::connection& conn = *wrapper;
     pqxx::work w(conn);
+    auto res1 = w.exec_params("SELECT 1 FROM users WHERE id = $1", user1_id);
+    auto res2 = w.exec_params("SELECT 1 FROM users WHERE id = $1", user2_id);
+    if (res1.empty() || res2.empty()) {
+        throw std::runtime_error("One of the users does not exist");
+    }
+
     int chat_id = 0;
     auto result = w.exec_params(
     R"(
@@ -39,7 +45,7 @@ int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
 
 std::vector<Message> ChatManager::GetMessages(int chat_id, int messages_count, int offset){
     std::vector<Message> messages;
-    constexpr auto select_messages_query = "SELECT id, chat_id, sender_id, content, created_at FROM messages WHERE chat_id=$1 LIMIT $2 OFFSET $3;"_zv;
+    constexpr auto select_messages_query = "SELECT id, chat_id, sender_id, content, sent_at  FROM messages WHERE chat_id=$1 LIMIT $2 OFFSET $3;"_zv;
     auto wrapper = pool_.GetConnection();
     pqxx::connection& conn = *wrapper;
     pqxx::read_transaction r(conn);

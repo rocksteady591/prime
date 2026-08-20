@@ -16,6 +16,10 @@
 #include "connection_pool.h"
 #include "user.h"
 
+#ifdef GetUserName
+#undef GetUserName
+#endif
+
 namespace beast = boost::beast;
 namespace json = boost::json;
 namespace http = beast::http;
