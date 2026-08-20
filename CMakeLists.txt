@@ -3,7 +3,6 @@ project(TEST CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(WIN32)
-    # 0x0A00 означает Windows 10 / Windows 11 / Windows Server 2016+
     add_compile_definitions(_WIN32_WINNT=0x0A00)
 endif()
 
@@ -17,21 +16,16 @@ find_package(protobuf REQUIRED)
 find_package(libpqxx REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# Генерируем protobuf файлы
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS public/proto/message.proto)
 
-# --- СОЗДАЕМ ОБЪЕКТНУЮ БИБЛИОТЕКУ ДЛЯ PROTOBUF ---
 add_library(proto_objects OBJECT ${PROTO_SRCS} ${PROTO_HDRS})
 
-# ВАЖНО: Добавляем include-директории для protobuf
 target_include_directories(proto_objects PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-# Добавляем protobuf как зависимость для proto_objects
 target_link_libraries(proto_objects PRIVATE protobuf::libprotobuf)
 
-# --- ОБЩАЯ БИБЛИОТЕКА ДЛЯ ОБЩИХ ФАЙЛОВ ---
 add_library(common_objects OBJECT
     "src/user.cpp"
     "src/request_handler.cpp"
