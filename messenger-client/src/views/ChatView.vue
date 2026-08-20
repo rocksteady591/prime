@@ -2,14 +2,18 @@
     <MainLayout>
         <template #sidebar>
             <Sidebar title="Чаты"
+                     :class="{ open: sidebarOpen }"
                      :items="store.chatList"
                      :activeId="store.activeChatId"
                      :userId="auth.userId || undefined"
+                     @close="sidebarOpen = false"
                      @select="store.setActiveChat"
                      @add="onAddChat" />
         </template>
 
         <template #main>
+            <Button icon="pi pi-bars" text @click="sidebarOpen = !sidebarOpen" class="menu-toggle" />
+
             <div v-if="wsStore.status !== 'connected'" class="connecting">
                 <ProgressSpinner />
                 <span>{{ wsStore.status === 'connecting' ? 'Подключение...' : 'Ошибка подключения' }}</span>
@@ -30,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-    import { onMounted } from 'vue'
+    import { onMounted, ref } from 'vue'
     import ProgressSpinner from 'primevue/progressspinner'
     import MainLayout from '@/components/layout/MainLayout.vue'
     import Sidebar from '@/components/sidebar/Sidebar.vue'
@@ -42,6 +46,8 @@
     const store = useChatsStore()
     const auth = useAuthStore()
     const wsStore = useWebSocketStore()
+
+    const sidebarOpen = ref(false)
 
     onMounted(async () => {
         if (auth.userId) {
@@ -84,24 +90,17 @@
     }
 </script>
 
-<style scoped>
-    .connecting {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 1rem;
-        background: var(--surface-ground);
-        color: var(--text-color-secondary);
-    }
-    .no-chat {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--text-color-secondary);
-        background: var(--surface-ground);
-        font-size: 1.2rem;
-    }
+<style>
+.menu-toggle {
+  display: none;
+  position: fixed;
+  top: 0.75rem;
+  left: 1rem;
+  z-index: 1100;
+}
+@media (max-width: 768px) {
+  .menu-toggle {
+    display: block;
+  }
+}
 </style>
