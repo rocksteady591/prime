@@ -20,9 +20,15 @@ inline void MyFormatter(logging::record_view const& req, logging::formatting_ost
 	json::object res;
 	boost::posix_time::ptime now = boost::posix_time::microsec_clock::universal_time();
 	res["timestampt"] = boost::posix_time::to_iso_extended_string(now);
-	logging::value_ref<json::object> data = logging::extract<json::object>("data", req);
-	res["data"] = std::move(data.get());
-	logging::value_ref<std::string> msg = logging::extract<std::string>("msg", req);
-	res["message"] = std::move(msg.get());
+	if (auto data = logging::extract<json::object>("data", req)) {
+        res["data"] = data.get();
+    } else {
+        res["data"] = nullptr;
+    }
+	if (auto msg = logging::extract<std::string>("msg", req)) {
+        res["message"] = std::move(msg.get());
+    } else {
+        res["message"] = nullptr;
+    }
 	osrm << res;
 }

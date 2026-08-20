@@ -1,4 +1,9 @@
 #pragma once
+
+#ifdef GetUserName
+#undef GetUserName
+#endif
+
 #include <string>
 #include <unordered_map>
 #include <mutex>

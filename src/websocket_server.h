@@ -32,6 +32,7 @@ public:
     void Run();
     void SendRaw(const std::string& raw_data);
     void DoRead();
+    void ForceClose();
 private:
     void key_exchange(const std::vector<unsigned char>& received_key);
     websocket::stream<tcp::socket> ws_;

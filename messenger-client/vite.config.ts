@@ -14,11 +14,20 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     proxy: {
-      '/ws': {
-        target: 'ws://localhost:9000',
-        ws: true,
-        changeOrigin: true,
-      },
+        '/ws': {
+          target: 'ws://127.0.0.1:9000',
+          ws: true,
+          changeOrigin: true,
+          rewrite: (path) => path,
+          configure: (proxy, options) => {
+            proxy.on('error', (err, req, res) => {
+              console.log('proxy error', err);
+            });
+            proxy.on('proxyReq', (proxyReq, req, res) => {
+              console.log('proxy request', req.url);
+            });
+          },
+        },
       '/api': {
         target: 'https://localhost:8081',   // адрес HTTP-сервера
         changeOrigin: true,

@@ -8,7 +8,6 @@ if(WIN32)
 endif()
 
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_GENERATOR_PLATFORM x64)
 set(WITH_POSTGRESQL ON CACHE INTERNAL "")
 
 # Ищем пакеты, предоставленные Conan
@@ -19,7 +18,7 @@ find_package(libpqxx REQUIRED)
 find_package(OpenSSL REQUIRED)
 
 # Генерируем protobuf файлы
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS message.proto)
+protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS public/proto/message.proto)
 
 # --- СОЗДАЕМ ОБЪЕКТНУЮ БИБЛИОТЕКУ ДЛЯ PROTOBUF ---
 add_library(proto_objects OBJECT ${PROTO_SRCS} ${PROTO_HDRS})

@@ -237,8 +237,17 @@ int main() {
                 ssl::context::default_workarounds |
                 ssl::context::no_sslv2 |
                 ssl::context::single_dh_use);
-        ctx.use_certificate_file("/Users/philingosling/Documents/primal/server.crt", ssl::context::pem);
-        ctx.use_private_key_file("/Users/philingosling/Documents/primal/server.key", ssl::context::pem);
+
+        auto cert_path = std::getenv("SSL_CERT_FILE");
+        auto key_path = std::getenv("SSL_KEY_FILE");
+
+        if (!cert_path || !key_path) {
+            throw std::runtime_error("SSL_CERT_FILE and SSL_KEY_FILE must be set");
+        }
+
+        ctx.use_certificate_file(cert_path, ssl::context::file_format::pem);
+        ctx.use_private_key_file(key_path, ssl::context::file_format::pem);
+
         ctx.set_verify_mode(ssl::verify_none);
 
         ChatManager chat_manager(pool);

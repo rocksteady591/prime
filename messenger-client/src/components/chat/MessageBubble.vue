@@ -1,20 +1,12 @@
 <template>
     <div :class="['message-row', isOutgoing ? 'outgoing' : 'incoming']">
-        <Avatar v-if="!isOutgoing"
-                icon="pi pi-user"
-                size="normal"
-                shape="circle"
-                class="avatar" />
+        <Avatar v-if="!isOutgoing" icon="pi pi-user" size="normal" shape="circle" class="avatar" />
         <div :class="['bubble', isOutgoing ? 'outgoing' : 'incoming']">
             <div class="sender-name" v-if="!isOutgoing">{{ sender }}</div>
             <div class="text">{{ text }}</div>
             <div class="time">{{ formatTime(timestamp) }}</div>
         </div>
-        <Avatar v-if="isOutgoing"
-                icon="pi pi-user"
-                size="normal"
-                shape="circle"
-                class="avatar" />
+        <Avatar v-if="isOutgoing" icon="pi pi-user" size="normal" shape="circle" class="avatar" />
     </div>
 </template>
 
@@ -37,8 +29,9 @@
     .message-row {
         display: flex;
         align-items: flex-end;
-        gap: 8px;
-        max-width: 70%;
+        gap: 0.5rem;
+        max-width: 75%;
+        animation: messageIn 0.2s ease-out;
     }
 
     .incoming {
@@ -51,43 +44,74 @@
     }
 
     .avatar {
+        flex-shrink: 0;
         margin-bottom: 4px;
+        background: var(--primary-light);
+        color: white;
     }
 
     .bubble {
-        padding: 10px 14px;
-        border-radius: 18px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        padding: 0.6rem 1rem;
+        border-radius: 8px;
+        background: #f0f0f0; /* временно */
+        border: 1px solid #ccc; /* временно */
+        color: #000;
         word-wrap: break-word;
-        position: relative;
     }
 
     .incoming .bubble {
-        background: #ffffff;
-        border-top-left-radius: 4px;
+        background: #fff;
+        border: 1px solid #ddd;
     }
 
     .outgoing .bubble {
-        background: #d9fdd3;
-        border-top-right-radius: 4px;
+        background: #007bff;
+        color: #fff;
     }
 
     .sender-name {
         font-weight: 600;
         font-size: 0.8rem;
         margin-bottom: 2px;
-        color: #007bff;
+        color: var(--primary-dark);
     }
 
     .text {
         font-size: 0.95rem;
-        line-height: 1.4;
+        line-height: 1.5;
     }
 
     .time {
-        font-size: 0.7rem;
-        color: #888;
+        font-size: 0.65rem;
+        opacity: 0.7;
         text-align: right;
         margin-top: 4px;
+    }
+
+    .outgoing .time {
+        color: rgba(255,255,255,0.8);
+    }
+
+    /* Адаптив */
+    @media (max-width: 480px) {
+        .message-row {
+            max-width: 90%;
+        }
+
+        .bubble {
+            padding: 0.5rem 0.75rem;
+        }
+    }
+
+    @keyframes messageIn {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 </style>

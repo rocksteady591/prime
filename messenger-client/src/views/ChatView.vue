@@ -1,30 +1,27 @@
 <template>
     <MainLayout>
         <template #sidebar>
-            <Sidebar title="ЧАТЫ"
-                     :items="store.chats"
+            <Sidebar title="Чаты"
+                     :items="store.chatList"
                      :activeId="store.activeChatId"
-                     :userId="myUserId"
+                     :userId="auth.userId || undefined"
                      @select="store.setActiveChat"
                      @add="onAddChat" />
         </template>
 
         <template #main>
-            <!-- Индикатор подключения -->
-            <div v-if="status !== 'connected'" class="connecting">
+            <div v-if="wsStore.status !== 'connected'" class="connecting">
                 <ProgressSpinner />
-                <span>Подключение к серверу...</span>
+                <span>{{ wsStore.status === 'connecting' ? 'Подключение...' : 'Ошибка подключения' }}</span>
             </div>
 
-            <!-- Окно чата -->
             <ChatWindow v-else-if="store.activeChatId"
                         :key="store.activeChatId"
-                        :messages="filteredMessages"
-                        :currentUserId="myUserId"
-                        :chatName="store.activeChat?.name"
+                        :messages="store.activeMessages"
+                        :currentUserId="auth.userId || ''"
+                        :chatName="store.activeChatName"
                         @send="onSend" />
 
-            <!-- Нет выбранного чата -->
             <div v-else class="no-chat">
                 Выберите чат или создайте новый
             </div>
@@ -33,43 +30,57 @@
 </template>
 
 <script setup lang="ts">
-    import { computed, onMounted } from 'vue'
-    import ProgressSpinner from 'primevue/progressspinner'  // <-- добавили импорт
+    import { onMounted } from 'vue'
+    import ProgressSpinner from 'primevue/progressspinner'
     import MainLayout from '@/components/layout/MainLayout.vue'
     import Sidebar from '@/components/sidebar/Sidebar.vue'
     import ChatWindow from '@/components/chat/ChatWindow.vue'
-    import { useSecureChat } from '@/composables/useSecureChat'
-    import { useChatStore } from '@/stores/chat'
+    import { useChatsStore } from '@/stores/chat'
     import { useAuthStore } from '@/stores/auth'
+    import { useWebSocketStore } from '@/stores/websocket'
 
-    const store = useChatStore()
+    const store = useChatsStore()
     const auth = useAuthStore()
+    const wsStore = useWebSocketStore()
 
-    // Теперь забираем status
-    const { messages, sendMessage, connect, myUserId, status } = useSecureChat(auth.userId ?? 'unknown')
-
-    onMounted(() => {
-    connect(auth.token ?? undefined)
+    onMounted(async () => {
+        if (auth.userId) {
+            await store.loadChats(parseInt(auth.userId))
+            // Подключаемся только если ещё не подключены
+            if (wsStore.status === 'disconnected') {
+                wsStore.connect()
+            }
+        }
     })
 
-    const filteredMessages = computed(() =>
-    messages.value.filter(m =>
-    m.sender === store.activeChatId ||
-    m.recipient === store.activeChatId
-    )
-    )
-
     function onSend(text: string) {
-    if (store.activeChatId) {
-    sendMessage(text, store.activeChatId)
-    }
+        console.log('onSend called, text:', text)
+        console.log('activeChatId:', store.activeChatId)
+        console.log('wsStore.status:', wsStore.status)
+
+        if (!store.activeChatId) {
+            console.warn('Нет активного чата')
+            return
+        }
+
+        const parts = store.activeChatId.split('_')
+        const myId = auth.userId || ''
+        const recipientId = parts[1] === myId ? parts[2] : parts[1]
+        console.log('recipientId:', recipientId)
+
+        const tempMsg = { sender: myId, text, timestamp: Date.now() }
+        store.addMessage(store.activeChatId, tempMsg)
+
+        const sent = wsStore.sendMessage(recipientId, text)
+        console.log('sendMessage result:', sent)
     }
 
     function onAddChat(id: string, name: string) {
-    if (!store.chats.some(c => c.id === id)) {
-    store.chats.push({ id, name })
-    }
-    store.setActiveChat(id)
+        const myId = auth.userId
+        const ids = [parseInt(myId || '0'), parseInt(id)].sort((a, b) => a - b)
+        const chatId = `chat_${ids[0]}_${ids[1]}`
+        store.addChat(chatId, name)
+        store.setActiveChat(chatId)
     }
 </script>
 
@@ -80,31 +91,17 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        background: #e5ddd5;
-        color: #555;
-        font-size: 16px;
+        gap: 1rem;
+        background: var(--surface-ground);
+        color: var(--text-color-secondary);
     }
-
-        .connecting span {
-            margin-top: 12px;
-        }
-
     .no-chat {
         flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #e5ddd5;
-        color: #888;
-        font-size: 18px;
-    }
-
-    .my-id {
-        padding: 10px;
-        font-size: 12px;
-        color: #555;
-        background: #f0f0f0;
-        border-top: 1px solid #ddd;
-        text-align: center;
+        color: var(--text-color-secondary);
+        background: var(--surface-ground);
+        font-size: 1.2rem;
     }
 </style>
