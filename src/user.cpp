@@ -118,6 +118,15 @@ std::string Users::RegisterUser(const std::string& login, const std::string& pas
     return token;
 }
 
+void Users::InvalidationUserByLogin(const std::string& login){
+    constexpr auto update_query = "UPDATE users SET token = $1 WHERE login = $2;"_zv;
+    auto wrapper = pool_.GetConnection();
+    pqxx::work w(*wrapper);
+    w.exec(update_query, {nullptr, login});
+    auto user = FindUserByLogin(login);
+    user->SetToken("");
+}
+
 std::size_t Users::GetCounter()const noexcept{
     std::scoped_lock lock(mutex_);
     return counter_;

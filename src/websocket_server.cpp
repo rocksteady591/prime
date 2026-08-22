@@ -1,8 +1,13 @@
 #include <boost/asio.hpp>
 #include <boost/asio/buffer.hpp>
+#include <boost/asio/dispatch.hpp>
+#include <boost/asio/ssl/stream_base.hpp>
+#include <boost/asio/ssl/verify_mode.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/core/error.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/beast/http/field.hpp>
+#include <boost/beast/http/fields_fwd.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
@@ -66,8 +71,8 @@ const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate
     return { public_key, private_key };
 }
 
-Session::Session(tcp::socket socket, Server* server)
-    : ws_(std::move(socket)), server_(server) {
+Session::Session(tcp::socket&& socket, ssl::context& ctx,  Server* server)
+    : ws_(std::move(socket), ctx), server_(server) {
 }
 
 Session::~Session() {
@@ -77,63 +82,108 @@ Session::~Session() {
 }
 
 void Session::Run() {
+
+    net::dispatch(ws_.get_executor(),
+        beast::bind_front_handler(&Session::on_run, shared_from_this()));
     // Читаем HTTP-запрос апгрейда WebSocket
-    beast::http::request<beast::http::string_body> upgrade_req;
-    beast::error_code ec;
-    beast::http::read(ws_.next_layer(), buffer_, upgrade_req, ec);
-    if (ec) {
+    /*beast::http::async_read(ws_.next_layer(),
+                            buffer_,
+                            upgrade_req_,
+                            beast::bind_front_handler(&Session::on_read, shared_from_this()));*/
+}
+
+void Session::on_run(){
+    ws_.next_layer().async_handshake(
+        ssl::stream_base::server,
+        beast::bind_front_handler(&Session::on_handshake, shared_from_this())
+    );
+}
+
+void Session::on_handshake(beast::error_code ec){
+    if(ec){
+        json::object obj;
+        obj["Error"] = "onHandshake";
+        BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+            << logging::add_value("msg", "error ssl handshake" + ec.message());
+        return;
+    }
+
+    beast::http::async_read(ws_.next_layer(),
+                            buffer_,
+                            upgrade_req_,
+                            beast::bind_front_handler(&Session::on_read, shared_from_this()));
+
+}
+
+void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered){
+    if(ec){
         json::object obj;
         obj["Error"] = "readUpgradeError";
         BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
-            << logging::add_value("msg", ec.message());
+            << logging::add_value("msg", "error reading" + ec.message());
         return;
     }
 
-    // Извлекаем токен из URL (?token=...)
     std::string token;
-    std::string target = upgrade_req.target();
-    auto pos = target.find("?token=");
-    if (pos != std::string::npos) {
-        token = target.substr(pos + 7);
-        // Отсекаем возможные дополнительные параметры
-        auto end = token.find('&');
-        if (end != std::string::npos) token = token.substr(0, end);
-    }
-
-    // Проверяем токен
-    User* user = server_->GetUsers().FindUserByToken(token);
-    if (!user) {
-        json::object obj;
-        obj["Warning"] = "invalidToken";
-        BOOST_LOG_TRIVIAL(warning) << logging::add_value("data", obj)
-            << logging::add_value("msg", "Invalid token");
-        // Отправляем 401 и закрываем соединение
-        beast::http::response<beast::http::string_body> res{
-            beast::http::status::unauthorized, upgrade_req.version() };
-        res.set(beast::http::field::server, "Messenger");
-        res.set(beast::http::field::content_type, "text/plain");
-        res.body() = "Invalid token";
-        beast::http::write(ws_.next_layer(), res, ec);
-        return;
-    }
-
-    // Сохраняем ID пользователя и регистрируем сессию
-    user_id_ = std::to_string(user->GetId());
-    server_->RegisterSession(user_id_, shared_from_this());
-
-    // Теперь выполняем WebSocket handshake
-    ws_.async_accept(upgrade_req, [self = shared_from_this()](beast::error_code ec) {
-        if (ec) {
+    if(upgrade_req_.count(http::field::authorization) > 0){
+        std::string auth_value(upgrade_req_[http::field::authorization]);
+        if(!auth_value.starts_with("Bearer")){
             json::object obj;
-            obj["Error"] = "acceptError";
+            obj["Error"] = "readUpgradeError";
             BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
-                << logging::add_value("msg", ec.message());
+                << logging::add_value("msg", "Empty or incorrect token");
             return;
         }
-        self->ws_.binary(true);
-        self->DoRead();
-        });
+
+        try {
+            size_t start = 7;
+            token = auth_value.substr(start, auth_value.size() - start);
+        } catch (const std::exception& e) {
+        json::object obj;
+            obj["Error"] = "parsingError";
+            BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                << logging::add_value("msg", e.what());
+            return;
+        }
+
+        // Проверяем токен
+        User* user = server_->GetUsers().FindUserByToken(token);
+        if (!user) {
+            beast::error_code ec;
+            json::object obj;
+            obj["Warning"] = "invalidToken";
+            BOOST_LOG_TRIVIAL(warning) << logging::add_value("data", obj)
+                << logging::add_value("msg", "Invalid token");
+            // Отправляем 401 и закрываем соединение
+            beast::http::response<beast::http::string_body> res{
+                beast::http::status::unauthorized, upgrade_req_.version() };
+            res.set(beast::http::field::server, "Messenger");
+            res.set(beast::http::field::content_type, "text/plain");
+            res.body() = "Invalid token";
+            beast::http::write(ws_.next_layer(), res, ec);
+            return;
+        }
+
+        // Сохраняем ID пользователя и регистрируем сессию
+        user_id_ = std::to_string(user->GetId());
+        server_->RegisterSession(user_id_, shared_from_this());
+
+        // Теперь выполняем WebSocket handshake
+        ws_.async_accept(upgrade_req_, [self = shared_from_this()](beast::error_code ec) {
+            if (ec) {
+                json::object obj;
+                obj["Error"] = "acceptError";
+                BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                    << logging::add_value("msg", ec.message());
+                return;
+            }
+            self->ws_.binary(true);
+            self->DoRead();
+            });
+
+    }
 }
+
 
 void Session::key_exchange(const std::vector<unsigned char>& received_key) {
     auto [pk, sk] = generate_keypair();
@@ -314,7 +364,17 @@ Server::Server(Users& users, ChatManager& chat_manager)
         io_context_(threads_count_),
         acceptor_(io_context_, tcp::endpoint{ tcp::v4(), port_ }),
         users_(users),
-        chat_manager_(chat_manager){}
+        chat_manager_(chat_manager){
+            //для самоподписных сертификатов
+            ctx_.set_options(
+                ssl::context::default_workarounds |
+                ssl::context::no_sslv2 |
+                ssl::context::single_dh_use);
+            ctx_.use_certificate_file("/Users/philingosling/Documents/primal/server.crt", ssl::context::pem);
+            ctx_.use_private_key_file("/Users/philingosling/Documents/primal/server.key", ssl::context::pem);
+            //отклбчаем проверку
+            ctx_.set_verify_mode(ssl::verify_none);
+        }
 
 Users& Server::GetUsers() {
     return users_;
@@ -328,7 +388,7 @@ void Server::do_accept() {
             BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
                 << logging::add_value("msg", "new connection"s);
 
-            std::make_shared<Session>(std::move(socket), this)->Run();
+            std::make_shared<Session>(std::move(socket), ctx_, this)->Run();
         }
         do_accept();
         });
@@ -383,7 +443,7 @@ int main() {
         ConnectionPool pool{std::thread::hardware_concurrency(), pg_path};
         InitLog();
         Users users(pool);
-        
+
         ChatManager chat{pool};
         Server server(users, chat);
         server.RunServer();

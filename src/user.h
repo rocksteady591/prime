@@ -37,9 +37,10 @@ public:
     User* FindUserByLogin(const std::string& login);
     User* FindUserByUserName(const std::string& user_name);
     std::size_t GetCounter() const noexcept;
+    void InvalidationUserByLogin(const std::string& login);
+    std::string GenerateToken();
 private:
     ConnectionPool& pool_;
-    std::string GenerateToken();
     bool LoadUsers();
     std::unordered_map<std::string, User> users_;   // ключ – логин
     std::size_t counter_ = 0;
