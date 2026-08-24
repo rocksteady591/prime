@@ -2,8 +2,8 @@
 boost/1.91.0
 libsodium/1.0.21
 protobuf/3.21.12
-libpqxx/8.0.1
-openssl/3.3.1
+libpqxx/8.0.2
+openssl/3.4.1
 
 [tool_requires]
 protobuf/3.21.12
