@@ -335,7 +335,7 @@ private:
         {
             json::value body_val = json::parse(request.body());
             json::object body_obj = body_val.as_object();
-            user_name = std::move(body_obj["login"].as_string());
+            user_name = std::move(body_obj["user_name"].as_string());
         }
         catch (const std::exception& e)
         {
