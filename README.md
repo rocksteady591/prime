@@ -81,7 +81,9 @@
 ## 🧪 Что в планах (ближайшие задачи)
 
 - **Уведомления о прочтении** — добавить подтверждение доставки и прочтения сообщений.
+- **Сплит чатов для веб (пк) и десктопной версий** — открывать одновременной и писать в нескольких чатах а также drag and drop файлов или сообщений между чатами.
 - **Групповые чаты** — поддержка бесед с несколькими участниками.
+- **Групповые звонки** — сделать аналогичный с дискордом функционал по звонкам.
 - **Медиа-файлы** — отправка изображений и файлов (через отдельный поток или base64).
 - **Статус «печатает»** — индикация набора текста.
 - **История сообщений** с возможностью поиска по дате и ключевым словам.
@@ -106,14 +108,18 @@
 
 далее универсальная команда: conan install . --output-folder=build --build=missing --build=boost -s build_type=Debug -s arch=x86_64 -s compiler.cppstd=23 -c tools.cmake.cmaketoolchain:generator="Ninja"
 
-cd build
+более короткая под все системы
+conan install . --build=missing --output-folder=build -s build_type=Debug -s compiler.cppstd=23
 
-под все системы: cmake .. -G "Ninja" -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug или cmake --preset conan-debug
+под все системы: cmake --preset conan-debug или cd build потом cmake .. -G "Ninja" -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug
 
-под xcode: cmake .. -G Xcode \
+под xcode: cd build потом cmake .. -G Xcode \
   -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_C_COMPILER=clang \
   -DCMAKE_CXX_COMPILER=clang++
 
 cmake --build .
+
+Пример добавления переменной среды Linux/MacOs
+export PG_DB_URL="postgres://user:password@host:port/db_name"

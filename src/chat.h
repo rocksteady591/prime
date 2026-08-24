@@ -17,6 +17,11 @@ struct ChatInfo{
     std::string create_chat_time;
 };
 
+struct ContactInfo{
+    std::string username;
+    std::string login;
+};
+
 class ChatManager{
 public:
     explicit ChatManager(ConnectionPool& pool);
@@ -24,6 +29,7 @@ public:
     std::vector<Message> GetMessages(int chat_id, int messages_count = 50, int offset = 0);
     void AddMessage(int sender_id, int chat_id, const std::string& message);
     std::vector<ChatInfo> GetChats(int user_id);
+    std::vector<ContactInfo> GetContacts(int user_id);
 private:
     ConnectionPool& pool_;
 };

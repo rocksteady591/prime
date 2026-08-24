@@ -1,5 +1,6 @@
 #pragma once
 #include <boost/beast/http.hpp>
+#include <boost/beast/http/status.hpp>
 #include <boost/json.hpp>
 #include <boost/json/array.hpp>
 #include <boost/json/object.hpp>
@@ -7,6 +8,7 @@
 #include <boost/beast.hpp>
 #include <boost/asio.hpp>
 #include <boost/json/parse.hpp>
+#include <boost/json/value.hpp>
 #include <exception>
 #include <memory>
 #include <filesystem>
@@ -15,10 +17,6 @@
 #include "chat.h"
 #include "connection_pool.h"
 #include "user.h"
-
-#ifdef GetUserName
-#undef GetUserName
-#endif
 
 namespace beast = boost::beast;
 namespace json = boost::json;
@@ -113,7 +111,11 @@ private:
         }
 
         boost::json::object resp;
-        resp["token"] = user->GetToken();
+        std::string token = user->GetToken();
+        if(token.empty()){
+            token = users_.GenerateToken();
+        }
+        resp["token"] = token;
         resp["user_id"] = std::to_string(user->GetId());
         LogHandler(200, "Auth"s, "User is autorized"s);
         return response(http::status::ok, json::serialize(resp));
@@ -170,6 +172,103 @@ private:
             return response(http::status::internal_server_error, json::serialize(obj));
         }
 
+    }
+
+    template<typename F>
+    HttpResponse HandleGetContacts(const HttpRequest& request, F&& response){
+        using namespace std::literals;
+        std::string token;
+        json::object obj;
+        try{
+            json::value body_val = json::parse(request.body());
+            json::object body_obj = body_val.as_object();
+            token = body_obj["token"].as_string();
+        }catch(const std::exception& e){
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Request parse error";
+            LogHandler(400, "invalidArgument"s, "Request parse error"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }
+        User* user = users_.FindUserByToken(token);
+        if(user == nullptr){
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Non-existent user";
+            LogHandler(400, "invalidArgument"s, "Non-existent user"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }
+        json::array result;
+        try{
+            std::vector<ContactInfo> contacts = chat_manager_.GetContacts(user->GetId());
+            result.reserve(contacts.size());
+            for(const ContactInfo& contact: contacts){
+                json::object j_contact;
+                j_contact["username"] = contact.username;
+                j_contact["login"] = contact.login;
+                result.push_back(std::move(j_contact));
+            }
+        }catch (const pqxx::sql_error& e) {
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(400, "BadRequest"s, "Invalid request parametrs or data"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }catch (const pqxx::broken_connection& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(500, "InternalServerError"s, "Database is temporarily unavailable"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }catch (const std::exception& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = "An unexpected error occurred";
+            LogHandler(500, "InternalServerError"s, "An unexpected error occurred"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }
+        LogHandler(200, "GetContacts", "Contacts is contains");
+        return response(http::status::ok, json::serialize(result));
+    }
+
+    template<typename F>
+    HttpResponse HandleLogout(const HttpRequest& request, F&& response){
+        using namespace std::literals;
+        std::string login;
+        try {
+            json::value body_val = json::parse(request.body());
+            json::object body_obj = body_val.as_object();
+            login = body_obj["login"].as_string();
+        } catch (const std::exception& ec) {
+            json::object obj;
+            obj["code"] = "invalidArgument";
+            obj["message"] = "Request parse error";
+            LogHandler(400, "invalidArgument"s, "Request parse error"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }
+        try {
+            users_.InvalidationUserByLogin(login);
+        } catch (const pqxx::sql_error& e) {
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(400, "BadRequest"s, "Invalid request parametrs or data"s);
+            return response(http::status::bad_request, json::serialize(obj));
+        }catch (const pqxx::broken_connection& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = e.query();
+            LogHandler(500, "InternalServerError"s, "Database is temporarily unavailable"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }catch (const std::exception& e){
+            json::object obj;
+            obj["code"] = e.what();
+            obj["message"] = "An unexpected error occurred";
+            LogHandler(500, "InternalServerError"s, "An unexpected error occurred"s);
+            return response(http::status::internal_server_error, json::serialize(obj));
+        }
+        json::object body_resp;
+        body_resp["code"] = "succesLogout";
+        LogHandler(200, "logout"s, "success logout"s);
+        return response(http::status::ok, json::serialize(body_resp));
     }
 
 
@@ -236,7 +335,7 @@ private:
         {
             json::value body_val = json::parse(request.body());
             json::object body_obj = body_val.as_object();
-            user_name = std::move(body_obj["login"].as_string());
+            user_name = std::move(body_obj["user_name"].as_string());
         }
         catch (const std::exception& e)
         {
