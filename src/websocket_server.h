@@ -3,6 +3,8 @@
 #include <boost/asio/ssl/context.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/core/error.hpp>
+#include <boost/beast/core/tcp_stream.hpp>
+#include <boost/beast/ssl/ssl_stream.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/json.hpp>
@@ -42,7 +44,7 @@ public:
 private:
     void key_exchange(const std::vector<unsigned char>& received_key);
     void on_read(const beast::error_code& ec, std::size_t bytes_transfered);
-    websocket::stream<ssl::stream<tcp::socket>> ws_;
+    websocket::stream<beast::ssl_stream<beast::tcp_stream>> ws_;
     beast::flat_buffer buffer_;
     std::vector<unsigned char> shared_secret_key_;
     std::vector<unsigned char> sk_;

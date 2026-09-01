@@ -253,7 +253,8 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
 
 void Session::key_exchange(const std::vector<unsigned char>& received_key) {
     auto [pk, sk] = generate_keypair();
-    ws_.async_write(net::buffer(pk.data(), pk.size()),
+    auto shared_pk = std::make_shared<std::vector<unsigned char>>(std::move(pk));
+    ws_.async_write(net::buffer(shared_pk->data(), shared_pk->size()),
         [](beast::error_code ec, std::size_t bytes_write) {
             if (ec) {
                 json::object obj;
@@ -440,7 +441,10 @@ Server::Server(Users& users, ChatManager& chat_manager)
             ctx_.set_options(
                 ssl::context::default_workarounds |
                 ssl::context::no_sslv2 |
-                ssl::context::single_dh_use);
+                ssl::context::single_dh_use |
+                ssl::context::no_tlsv1 |          // возможно, отключить старые версии
+                ssl::context::no_tlsv1_1
+            );
             const char* cert_file = std::getenv("SERVER_CERT_FILE");
             const char* key_file = std::getenv("SERVER_KEY_FILE");
             if (!cert_file || !key_file) {
