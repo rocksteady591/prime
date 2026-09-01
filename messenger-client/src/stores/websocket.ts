@@ -60,7 +60,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       return
     }
 
-    const socket = new WebSocket(`ws://127.0.0.1:9000/ws?token=${useToken}`)
+    const socket = new WebSocket(`wss://${window.location.hostname}:9000/ws`, [useToken])
     socket.binaryType = 'arraybuffer'
     ws.value = socket
 

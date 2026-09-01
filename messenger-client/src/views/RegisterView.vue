@@ -78,12 +78,12 @@
     .join('')
 
     const response = await fetch('/api/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-    login: login.value.trim(),
-    password_hash: hashHex
-    })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            login: login.value.trim(),
+            password: password.value  
+        })
     })
 
     const data = await response.json()

@@ -8,6 +8,7 @@
 #include "request_handler.h"
 #include "chat.h"
 #include "log.h"
+#include "jwt_utils.h"
 
 namespace json = boost::json;
 namespace logging = boost::log;
@@ -49,7 +50,7 @@ RequestHandler::HttpResponse RequestHandler::HandleApiPost(HttpRequest request) 
         return HandleGetChats(request, text_response);
     }else if(target == "/api/get_contacts"){
         return HandleGetContacts(request, text_response);
-    }else if(target == "api/logout"){
+    }else if(target == "/api/logout"){
         return HandleLogout(request, text_response);
     }
     boost::json::object resp;
@@ -64,4 +65,25 @@ void RequestHandler::LogHandler(std::size_t error_code, std::string data, std::s
     obj["code"] = error_code;
     obj["data"] = std::move(data);
     BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj) << logging::add_value("msg", std::move(message));
+}
+
+std::optional<int> RequestHandler::ExtractUserIdFromRequest(const HttpRequest& req) {
+    auto it = req.find(http::field::authorization);
+    if (it == req.end()) {
+        return std::nullopt;
+    }
+    std::string auth = it->value();
+    if (auth.size() < 7 || auth.substr(0, 7) != "Bearer ") {
+        return std::nullopt;
+    }
+    std::string token = auth.substr(7);
+    std::string user_id_str;
+    if (!VerifyJWT(token, JWT_SECRET_KEY, user_id_str)) {
+        return std::nullopt;
+    }
+    try {
+        return std::stoi(user_id_str);
+    } catch (...) {
+        return std::nullopt;
+    }
 }

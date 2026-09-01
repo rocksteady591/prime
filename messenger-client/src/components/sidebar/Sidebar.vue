@@ -55,6 +55,7 @@ import InputGroup from 'primevue/inputgroup'
 import Avatar from 'primevue/avatar'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'primevue/usetoast'
+import { apiFetch } from '@/utils/api'
 
 const props = defineProps<{
     title: string
@@ -84,7 +85,7 @@ async function addChat() {
 
     adding.value = true
     try {
-        const response = await fetch('/api/find_user', {
+        const response = await apiFetch('/api/find_user', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -42,7 +42,7 @@ std::vector<ContactInfo> ChatManager::GetContacts(int user_id){
     constexpr auto query = "SELECT u.username, u.login FROM users u JOIN contacts c ON c.contact_id = u.id WHERE c.user_id = $1;"_zv;
     auto wrapper = pool_.GetConnection();
     pqxx::read_transaction r(*wrapper);
-    auto result = r.exec(query, user_id);
+    auto result = r.exec_params(query, user_id);
     contacts.reserve(result.size());
     for(const auto& row : result){
         std::string username = row[0].as<std::string>();
@@ -52,21 +52,29 @@ std::vector<ContactInfo> ChatManager::GetContacts(int user_id){
     return contacts;
 }
 
-std::vector<Message> ChatManager::GetMessages(int chat_id, int messages_count, int offset){
+std::vector<Message> ChatManager::GetMessages(int user_id, int chat_id, int limit, int offset){
     std::vector<Message> messages;
-    constexpr auto select_messages_query = "SELECT id, chat_id, sender_id, content, created_at FROM messages WHERE chat_id=$1 LIMIT $2 OFFSET $3;"_zv;
     auto wrapper = pool_.GetConnection();
-    pqxx::connection& conn = *wrapper;
-    pqxx::read_transaction r(conn);
-    pqxx::result result = r.exec_params(select_messages_query, chat_id, messages_count, offset);
+    pqxx::read_transaction r(*wrapper);
+
+    // Проверка доступа
+    auto check = r.exec_params(
+        "SELECT 1 FROM chats WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)",
+        chat_id, user_id);
+    if (check.empty()) throw std::runtime_error("Access denied");
+
+    auto result = r.exec_params(
+        "SELECT id, chat_id, sender_id, content, created_at FROM messages WHERE chat_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+        chat_id, limit, offset);
     messages.reserve(result.size());
-    for(const auto& row : result){
-        int id = row[0].as<int>();
-        int chat_id = row[1].as<int>();
-        int sender_id = row[2].as<int>();
-        std::string content(std::move(row[3].as<std::string>()));
-        std::string timestamp = row[4].as<std::string>();
-        messages.emplace_back(id, chat_id, sender_id, content, timestamp);
+    for (const auto& row : result) {
+        messages.emplace_back(
+            row[0].as<int>(),
+            row[1].as<int>(),
+            row[2].as<int>(),
+            row[3].as<std::string>(),
+            row[4].as<std::string>()
+        );
     }
     return messages;
 }

@@ -55,10 +55,10 @@
     const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(password.value))
     const hashHex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
     const response = await fetch('/api/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ login: login.value, password_hash: hashHex })
-    })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login: login.value, password: password.value })
+    });
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Ошибка')
     auth.setAuth(data.token, data.user_id)

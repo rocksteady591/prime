@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iomanip>
 #include "connection_pool.h"
+#include "jwt_utils.h"
 
 class User {
 public:
@@ -33,17 +34,16 @@ class Users {
 public:
     Users(ConnectionPool& pool);
     std::string RegisterUser(const std::string& login, const std::string& pass_hash);
+    User* FindUserById(int id);
     User* FindUserByToken(const std::string& token);
     User* FindUserByLogin(const std::string& login);
     User* FindUserByUserName(const std::string& user_name);
-    std::size_t GetCounter() const noexcept;
-    void InvalidationUserByLogin(const std::string& login);
-    std::string GenerateToken();
+    static bool VerifyPassword(const std::string& password, const std::string& stored_hash);
+
 private:
     ConnectionPool& pool_;
     bool LoadUsers();
-    std::unordered_map<std::string, User> users_;   // ключ – логин
-    std::size_t counter_ = 0;
+    std::unordered_map<std::string, User> users_by_login_;  // ключ – логин
+    std::unordered_map<int, User> users_by_id_;             // ключ – id
     mutable std::mutex mutex_;
-    User* LoadUserByToken(const std::string& token);
 };

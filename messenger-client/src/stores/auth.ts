@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useWebSocketStore } from './websocket'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('auth_token'))
@@ -17,6 +18,8 @@ export const useAuthStore = defineStore('auth', () => {
     userId.value = null
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user_id')
+    const wsStore = useWebSocketStore()
+    wsStore.disconnect()
   }
 
   return { token, userId, setAuth, logout }

@@ -1,15 +1,16 @@
-// stores/chat.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useAuthStore } from './auth'
+import { apiFetch } from '@/utils/api'
 
 export interface Message {
   sender: string
   text: string
   timestamp: number
-  // можно добавить id, но в WebSocket мы не получаем id сообщения
 }
 
 export const useChatsStore = defineStore('chats', () => {
+  const auth = useAuthStore()
   const chatList = ref<Array<{ id: string; name: string; unread?: number }>>([])
   const activeChatId = ref<string | null>(null)
   const messagesMap = ref<Record<string, Message[]>>({})
@@ -24,19 +25,23 @@ export const useChatsStore = defineStore('chats', () => {
     return chat?.name || 'Чат'
   })
 
-  // Загрузка списка чатов пользователя
-  async function loadChats(userId: number) {
+  // Загрузка списка чатов пользователя (user_id берётся из хранилища)
+  async function loadChats() {
+    const userId = parseInt(auth.userId || '0')
+    if (!userId) return
+
     try {
-      const res = await fetch('/api/get_chats', {
+      const res = await apiFetch('/api/get_chats', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
+          Authorization: `Bearer ${auth.token}`,
         },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({}), // сервер игнорирует тело, т.к. берёт id из токена
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Failed to load chats')
+
       // data: массив { id, user1_id, user2_id, create_timestamp }
       const chats = data.map((c: any) => {
         const otherId = c.user1_id === userId ? c.user2_id : c.user1_id
@@ -61,7 +66,7 @@ export const useChatsStore = defineStore('chats', () => {
     if (!realChatId) return
 
     try {
-      const res = await fetch('/api/get_messages', {
+      const res = await apiFetch('/api/get_messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

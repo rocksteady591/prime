@@ -36,6 +36,7 @@
 <script setup lang="ts">
     import { onMounted, ref } from 'vue'
     import ProgressSpinner from 'primevue/progressspinner'
+    import Button from 'primevue/button'
     import MainLayout from '@/components/layout/MainLayout.vue'
     import Sidebar from '@/components/sidebar/Sidebar.vue'
     import ChatWindow from '@/components/chat/ChatWindow.vue'
@@ -51,7 +52,7 @@
 
     onMounted(async () => {
         if (auth.userId) {
-            await store.loadChats(parseInt(auth.userId))
+            await store.loadChats()
             // Подключаемся только если ещё не подключены
             if (wsStore.status === 'disconnected') {
                 wsStore.connect()

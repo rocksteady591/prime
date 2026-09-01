@@ -55,7 +55,7 @@ void CreateTables(pqxx::connection& sql){
             "CREATE INDEX IF NOT EXISTS us_pair_idx ON chats (LEAST(user1_id, user2_id), GREATEST(user1_id, user2_id));"_zv;
         constexpr auto create_index_chat_id = "CREATE INDEX IF NOT EXISTS messages_chat_id_idx ON messages(chat_id);"_zv;
         constexpr auto create_index_send_at = "CREATE INDEX IF NOT EXISTS messages_sand_at_idx ON messages(sender_id DESC);"_zv;
-        txn.exec(R"(
+        txn.exec_params(R"(
             CREATE TABLE IF NOT EXISTS users(
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
@@ -65,7 +65,7 @@ void CreateTables(pqxx::connection& sql){
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         )"_zv);
-        txn.exec(R"(
+        txn.exec_params(R"(
             CREATE TABLE IF NOT EXISTS chats(
                 id SERIAL PRIMARY KEY,
                 user1_id integer REFERENCES users(id) NOT NULL,
@@ -74,7 +74,7 @@ void CreateTables(pqxx::connection& sql){
                 UNIQUE(user1_id, user2_id)
             );
         )"_zv);
-        txn.exec(R"(
+        txn.exec_params(R"(
             CREATE TABLE IF NOT EXISTS messages(
                 id SERIAL PRIMARY KEY,
                 chat_id integer REFERENCES chats(id) NOT NULL,
@@ -83,18 +83,18 @@ void CreateTables(pqxx::connection& sql){
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         )"_zv);
-        txn.exec(R"(
+        txn.exec_params(R"(
             CREATE TABLE IF NOT EXISTS contacts(
                 user_id integer REFERENCES users(id) ON DELETE CASCADE NOT NULL,
                 contact_id integer REFERENCES users(id) ON DELETE CASCADE NOT NULL,
                 PRIMARY KEY (user_id, contact_id)
             );
             )"_zv);
-        txn.exec(create_index_chat_id);
-        txn.exec(create_index_send_at);
-        txn.exec(create_index_find_chat);
-        txn.exec(create_index_username);
-        txn.exec(create_index_login);
+        txn.exec_params(create_index_chat_id);
+        txn.exec_params(create_index_send_at);
+        txn.exec_params(create_index_find_chat);
+        txn.exec_params(create_index_username);
+        txn.exec_params(create_index_login);
         txn.commit();
         obj["data"] = "createTable";
         obj["message"] = "Tables created seccessfully";
@@ -244,8 +244,13 @@ int main() {
                 ssl::context::default_workarounds |
                 ssl::context::no_sslv2 |
                 ssl::context::single_dh_use);
-        ctx.use_certificate_file("/Users/philingosling/Documents/primal/server.crt", ssl::context::pem);
-        ctx.use_private_key_file("/Users/philingosling/Documents/primal/server.key", ssl::context::pem);
+        const char* cert_file = std::getenv("SERVER_CERT_FILE");
+        const char* key_file = std::getenv("SERVER_KEY_FILE");
+        if (!cert_file || !key_file) {
+            throw std::runtime_error("Missing SSL certificate environment variables: SERVER_CERT_FILE and SERVER_KEY_FILE");
+        }
+        ctx.use_certificate_file(cert_file, ssl::context::pem);
+        ctx.use_private_key_file(key_file, ssl::context::pem);
         ctx.set_verify_mode(ssl::verify_none);
 
         ChatManager chat_manager(pool);
