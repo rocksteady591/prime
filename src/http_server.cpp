@@ -55,7 +55,7 @@ void CreateTables(pqxx::connection& sql){
             "CREATE INDEX IF NOT EXISTS us_pair_idx ON chats (LEAST(user1_id, user2_id), GREATEST(user1_id, user2_id));"_zv;
         constexpr auto create_index_chat_id = "CREATE INDEX IF NOT EXISTS messages_chat_id_idx ON messages(chat_id);"_zv;
         constexpr auto create_index_send_at = "CREATE INDEX IF NOT EXISTS messages_sand_at_idx ON messages(sender_id DESC);"_zv;
-        txn.exec_params(R"(
+        txn.exec(R"(
             CREATE TABLE IF NOT EXISTS users(
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
@@ -65,7 +65,7 @@ void CreateTables(pqxx::connection& sql){
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         )"_zv);
-        txn.exec_params(R"(
+        txn.exec(R"(
             CREATE TABLE IF NOT EXISTS chats(
                 id SERIAL PRIMARY KEY,
                 user1_id integer REFERENCES users(id) NOT NULL,
@@ -74,7 +74,7 @@ void CreateTables(pqxx::connection& sql){
                 UNIQUE(user1_id, user2_id)
             );
         )"_zv);
-        txn.exec_params(R"(
+        txn.exec(R"(
             CREATE TABLE IF NOT EXISTS messages(
                 id SERIAL PRIMARY KEY,
                 chat_id integer REFERENCES chats(id) NOT NULL,
@@ -83,18 +83,18 @@ void CreateTables(pqxx::connection& sql){
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         )"_zv);
-        txn.exec_params(R"(
+        txn.exec(R"(
             CREATE TABLE IF NOT EXISTS contacts(
                 user_id integer REFERENCES users(id) ON DELETE CASCADE NOT NULL,
                 contact_id integer REFERENCES users(id) ON DELETE CASCADE NOT NULL,
                 PRIMARY KEY (user_id, contact_id)
             );
             )"_zv);
-        txn.exec_params(create_index_chat_id);
-        txn.exec_params(create_index_send_at);
-        txn.exec_params(create_index_find_chat);
-        txn.exec_params(create_index_username);
-        txn.exec_params(create_index_login);
+        txn.exec(create_index_chat_id);
+        txn.exec(create_index_send_at);
+        txn.exec(create_index_find_chat);
+        txn.exec(create_index_username);
+        txn.exec(create_index_login);
         txn.commit();
         obj["data"] = "createTable";
         obj["message"] = "Tables created seccessfully";

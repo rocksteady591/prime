@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'path';
-// https://vite.dev/config/
+import fs from 'fs';
 export default defineConfig({
     plugins: [vue()],
     resolve: {
@@ -12,25 +12,25 @@ export default defineConfig({
     server: {
         host: '127.0.0.1',
         port: 5173,
+        https: {
+            key: fs.readFileSync(path.resolve(__dirname, '127.0.0.1+1-key.pem')),
+            cert: fs.readFileSync(path.resolve(__dirname, '127.0.0.1+1.pem')),
+        },
+        hmr: {
+            protocol: 'wss',
+            host: '127.0.0.1',
+        },
         proxy: {
-            '/ws': {
-                target: 'ws://127.0.0.1:9000',
-                ws: true,
-                changeOrigin: true,
-                rewrite: (path) => path,
-                configure: (proxy, options) => {
-                    proxy.on('error', (err, req, res) => {
-                        console.log('proxy error', err);
-                    });
-                    proxy.on('proxyReq', (proxyReq, req, res) => {
-                        console.log('proxy request', req.url);
-                    });
-                },
-            },
             '/api': {
-                target: 'https://localhost:8081', // адрес HTTP-сервера
+                target: 'https://127.0.0.1:8081',
                 changeOrigin: true,
                 secure: false,
+            },
+            '/ws': {
+                target: 'wss://127.0.0.1:9000',
+                ws: true,
+                secure: false,
+                changeOrigin: true,
             },
         },
     },

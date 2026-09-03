@@ -1,31 +1,64 @@
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
+import type { ApiError } from '@/types/api';
 
-export async function apiFetch(url: string, options: RequestInit = {}) {
-    const auth = useAuthStore()
-    const router = useRouter()
+export interface ApiResponse<T = any> {
+  data?: T;
+  error?: string;
+  status: number;
+  ok: boolean;
+}
 
-    const headers = new Headers(options.headers || {})
+export async function apiFetch<T = any>(
+  url: string,
+  options: RequestInit = {}
+): Promise<ApiResponse<T>> {
+  const auth = useAuthStore();
 
-    if (!headers.has('Content-Type')) {
-        headers.set('Content-Type', 'application/json')
-    }
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
 
-    const token = auth.token
-    if (token) {
-        headers.set('Authorization', `Bearer ${token}`)
-    }
+  const token = auth.token;
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
 
+  try {
     const response = await fetch(url, {
-        ...options,
-        headers,
-    })
+      ...options,
+      headers,
+    });
 
-    if (response.status === 401) {
-        auth.logout()
-        router.push('/login')
-        throw new Error('Unauthorized')
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+    const body = isJson ? await response.json() : null;
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        // можно очистить токен, но пусть компонент решает
+        return {
+          ok: false,
+          status: response.status,
+          error: body?.message || body?.error || 'Unauthorized',
+        };
+      }
+      return {
+        ok: false,
+        status: response.status,
+        error: body?.message || body?.error || `HTTP ${response.status}`,
+      };
     }
 
-    return response
+    return {
+      ok: true,
+      status: response.status,
+      data: body as T,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      error: err instanceof Error ? err.message : 'Network error',
+    };
+  }
 }

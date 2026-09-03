@@ -35,6 +35,9 @@ private:
     Users& users_;
     ChatManager& chat_manager_;
 
+    void LogHandler(std::size_t error_code, std::string data, std::string message);
+    std::optional<int> ExtractUserIdFromRequest(const HttpRequest& req);
+
     template <typename F>
     HttpResponse HandleRegister(const HttpRequest& request, F&& response) {
         using namespace std::literals;
@@ -111,10 +114,10 @@ private:
         }
 
         boost::json::object resp;
-        std::string token = user->GetToken();
-        if(token.empty()){
-            token = GenerateJWT(std::to_string(user->GetId()), JWT_SECRET_KEY);
-        }
+        std::string token = GenerateJWT(std::to_string(user->GetId()), JWT_SECRET_KEY);
+        user->SetToken(token);
+        // Обновляем токен в БД
+        users_.UpdateUserToken(user->GetId(), token);
         resp["token"] = token;
         resp["user_id"] = std::to_string(user->GetId());
         LogHandler(200, "Auth"s, "User is autorized"s);
@@ -284,30 +287,34 @@ private:
     HttpResponse HandleFindUser(const HttpRequest& request, F&& response) {
         using namespace std::literals;
 
-        // Проверяем токен
         auto user_id_opt = ExtractUserIdFromRequest(request);
         if (!user_id_opt) {
             json::object obj{{"code","unauthorized"}, {"message","Invalid token"}};
             return response(http::status::unauthorized, json::serialize(obj));
         }
 
-        std::string user_name;
+        std::string query;
         try {
             auto body = json::parse(request.body()).as_object();
-            user_name = std::move(body["user_name"].as_string().c_str());
+            query = std::move(body["user_name"].as_string().c_str());
         } catch (const std::exception& e) {
             json::object obj{{"code","invalidArgument"}, {"message","Request parse error"}};
             LogHandler(400, "invalidArgument"s, "Request parse error: "s + e.what());
             return response(http::status::bad_request, json::serialize(obj));
         }
 
-        if (user_name.empty()) {
-            json::object obj{{"code","invalidArgument"}, {"message","Login is empty"}};
-            LogHandler(400, "invalidArgument"s, "Login is empty"s);
+        if (query.empty()) {
+            json::object obj{{"code","invalidArgument"}, {"message","Query is empty"}};
+            LogHandler(400, "invalidArgument"s, "Query is empty"s);
             return response(http::status::bad_request, json::serialize(obj));
         }
 
-        auto* user = users_.FindUserByUserName(user_name);
+        // Сначала ищем по логину, потом по имени
+        auto* user = users_.FindUserByLogin(query);
+        if (!user) {
+            user = users_.FindUserByUserName(query);
+        }
+
         if (!user) {
             json::object obj{{"code","notFound"}, {"message","User not found"}};
             LogHandler(404, "notFound"s, "User not found"s);
@@ -321,6 +328,4 @@ private:
         LogHandler(200, "containsUser"s, "User is contains"s);
         return response(http::status::ok, json::serialize(body_response));
     }
-    void LogHandler(std::size_t error_code, std::string data, std::string message);
-    std::optional<int> ExtractUserIdFromRequest(const HttpRequest& req);
 };

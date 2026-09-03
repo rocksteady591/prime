@@ -18,6 +18,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
   let myKeypair: { publicKey: Uint8Array; privateKey: Uint8Array } | null = null
   let cryptoReady = false
   let cryptoPromise: Promise<void> | null = null
+  let connectTimeout: ReturnType<typeof setTimeout> | null = null
+  let keyExchangeTimeout: ReturnType<typeof setTimeout> | null = null
+  let connectionGeneration = 0
 
   async function initCrypto() {
     if (cryptoReady) return
@@ -30,7 +33,24 @@ export const useWebSocketStore = defineStore('websocket', () => {
     return cryptoPromise
   }
 
+  function clearConnectTimeout() {
+    if (connectTimeout) {
+      clearTimeout(connectTimeout)
+      connectTimeout = null
+    }
+  }
+
+  function clearKeyExchangeTimeout() {
+    if (keyExchangeTimeout) {
+      clearTimeout(keyExchangeTimeout)
+      keyExchangeTimeout = null
+    }
+  }
+
   function disconnect() {
+    clearConnectTimeout();
+    clearKeyExchangeTimeout();
+    connectionGeneration++
     if (ws.value) {
       ws.value.close()
       ws.value = null
@@ -39,17 +59,43 @@ export const useWebSocketStore = defineStore('websocket', () => {
     status.value = 'disconnected'
   }
 
+  let keyExchangeAttempts = 0;
+const MAX_ATTEMPTS = 3;
+
+  function sendPublicKey() {
+      if (!myKeypair || !ws.value || ws.value.readyState !== WebSocket.OPEN) return;
+      console.log('Sending public key, attempt', keyExchangeAttempts + 1);
+      ws.value?.send(myKeypair.publicKey as BufferSource);
+      keyExchangeAttempts++;
+      // Если через 5 секунд нет sharedKey, повторить
+        clearKeyExchangeTimeout();
+      keyExchangeTimeout = setTimeout(() => {
+          if (!sharedKey && ws.value?.readyState === WebSocket.OPEN && keyExchangeAttempts < MAX_ATTEMPTS) {
+              sendPublicKey();
+          } else if (!sharedKey) {
+              console.error('Key exchange failed after', MAX_ATTEMPTS, 'attempts');
+              status.value = 'error';
+          }
+      }, 5000);
+  }
+
   async function connect(token?: string) {
     await initCrypto()
     if (!myKeypair) {
+      console.error('Crypto not initialized');
       status.value = 'error'
       return
     }
+    console.log('myKeypair is ready:', myKeypair);
 
     if (ws.value) {
+      connectionGeneration++
+      clearKeyExchangeTimeout()
       ws.value.close()
       ws.value = null
     }
+
+    clearConnectTimeout()
 
     sharedKey = null
     status.value = 'connecting'
@@ -60,18 +106,30 @@ export const useWebSocketStore = defineStore('websocket', () => {
       return
     }
 
-    const socket = new WebSocket(`wss://${window.location.hostname}:9000/ws`, [useToken])
+    const socket = new WebSocket(`wss://127.0.0.1:9000/ws?token=${encodeURIComponent(useToken)}`);
+    const generation = ++connectionGeneration
     socket.binaryType = 'arraybuffer'
     ws.value = socket
 
     socket.onopen = () => {
-      if (myKeypair) {
-        socket.send(myKeypair.publicKey as BufferSource)
-      }
-    }
+      if (generation !== connectionGeneration) return
+        console.log('WebSocket open, readyState:', socket.readyState);
+        clearConnectTimeout();
+        if (myKeypair) {
+            keyExchangeAttempts = 0;
+            sendPublicKey();
+        } else {
+            status.value = 'error';
+        }
+    };
 
     socket.onmessage = async (event) => {
-      if (!(event.data instanceof ArrayBuffer)) return
+      if (generation !== connectionGeneration) return
+      console.log('onmessage, data type:', typeof event.data, 'byteLength:', event.data?.byteLength);
+      if (!(event.data instanceof ArrayBuffer)) {
+          console.warn('Received non-binary data, ignoring');
+          return;
+      }
       const data = new Uint8Array(event.data)
 
       if (!sharedKey) {
@@ -80,8 +138,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
         try {
           sharedKey = _sodium.crypto_box_beforenm(data, myKeypair!.privateKey)
           status.value = 'connected'
-          // НЕ отправляем ping
+          clearConnectTimeout()
         } catch (e) {
+          console.error('Shared key computation failed', e)
           status.value = 'error'
         }
         return
@@ -117,19 +176,22 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
 
     socket.onerror = (err) => {
+      if (generation !== connectionGeneration) return
       console.error('WebSocket error:', err)
     }
 
-    let reconnectAttempts = 0
-    const MAX_RECONNECT = 5
     socket.onclose = (event) => {
+      if (generation !== connectionGeneration) return
       console.log(`WebSocket closed: code ${event.code}, reason: ${event.reason}`)
-      if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT) {
-        reconnectAttempts++
-        setTimeout(() => connect(useToken), 3000 * reconnectAttempts)
+      clearConnectTimeout();
+      clearKeyExchangeTimeout();
+      if (event.code === 1000) {
+        status.value = 'disconnected'
       } else {
         status.value = 'error'
       }
+      ws.value = null
+      sharedKey = null
     }
   }
 

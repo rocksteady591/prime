@@ -12,7 +12,7 @@
     <!-- Поиск / добавление -->
     <div class="add-chat">
       <InputGroup>
-        <InputText v-model="newChatLogin" placeholder="Поиск или логин..." />
+        <InputText v-model="newChatLogin" placeholder="Введите логин или имя пользователя..." />
         <Button icon="pi pi-plus" severity="primary" @click="addChat" :loading="adding" />
       </InputGroup>
     </div>
@@ -91,11 +91,11 @@ async function addChat() {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${auth.token}`,
             },
-            body: JSON.stringify({ login }),
+            body: JSON.stringify({ user_name: login }),
         })
-        const data = await response.json()
+        const data = response.data
         if (!response.ok) {
-            throw new Error(data.message || 'Пользователь не найден')
+            throw new Error(data?.message || data?.error || 'Пользователь не найден')
         }
 
         const userId = data.user_id.toString()

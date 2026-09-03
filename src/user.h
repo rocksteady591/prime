@@ -39,6 +39,7 @@ public:
     User* FindUserByLogin(const std::string& login);
     User* FindUserByUserName(const std::string& user_name);
     static bool VerifyPassword(const std::string& password, const std::string& stored_hash);
+    void UpdateUserToken(int user_id, const std::string& token);
 
 private:
     ConnectionPool& pool_;

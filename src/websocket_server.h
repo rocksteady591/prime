@@ -37,6 +37,7 @@ public:
     Session(tcp::socket&& socket, ssl::context& ctx, Server* server);
     ~Session();
     void Run();
+    void Close();
     void on_run();
     void on_handshake(beast::error_code ec);
     void SendRaw(const std::string& raw_data);

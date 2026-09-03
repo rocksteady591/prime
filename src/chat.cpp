@@ -16,7 +16,7 @@ int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
     pqxx::connection& conn = *wrapper;
     pqxx::work w(conn);
     int chat_id = 0;
-    auto result = w.exec_params(
+    auto result = w.exec(
     R"(
         WITH inserted AS (
             INSERT INTO chats (user1_id, user2_id)
@@ -30,7 +30,7 @@ int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
         WHERE user1_id = $1 AND user2_id = $2
         LIMIT 1;
     )"_zv,
-    user1_id, user2_id
+    pqxx::params{user1_id, user2_id}
     );
     chat_id = result[0][0].as<int>();
     w.commit();
@@ -42,7 +42,7 @@ std::vector<ContactInfo> ChatManager::GetContacts(int user_id){
     constexpr auto query = "SELECT u.username, u.login FROM users u JOIN contacts c ON c.contact_id = u.id WHERE c.user_id = $1;"_zv;
     auto wrapper = pool_.GetConnection();
     pqxx::read_transaction r(*wrapper);
-    auto result = r.exec_params(query, user_id);
+    auto result = r.exec(query, pqxx::params{user_id});
     contacts.reserve(result.size());
     for(const auto& row : result){
         std::string username = row[0].as<std::string>();
@@ -58,14 +58,14 @@ std::vector<Message> ChatManager::GetMessages(int user_id, int chat_id, int limi
     pqxx::read_transaction r(*wrapper);
 
     // Проверка доступа
-    auto check = r.exec_params(
+    auto check = r.exec(
         "SELECT 1 FROM chats WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)",
-        chat_id, user_id);
+        pqxx::params{chat_id, user_id});
     if (check.empty()) throw std::runtime_error("Access denied");
 
-    auto result = r.exec_params(
-        "SELECT id, chat_id, sender_id, content, created_at FROM messages WHERE chat_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
-        chat_id, limit, offset);
+    auto result = r.exec(
+        "SELECT id, chat_id, sender_id, content, sent_at FROM messages WHERE chat_id=$1 ORDER BY sent_at DESC LIMIT $2 OFFSET $3",
+        pqxx::params{chat_id, limit, offset});
     messages.reserve(result.size());
     for (const auto& row : result) {
         messages.emplace_back(
@@ -85,7 +85,7 @@ std::vector<ChatInfo> ChatManager::GetChats(int user_id){
     auto wrapper = pool_.GetConnection();
     pqxx::connection& conn = *wrapper;
     pqxx::read_transaction r(conn);
-    pqxx::result select_result = r.exec_params(query_select, user_id);
+    pqxx::result select_result = r.exec(query_select, pqxx::params{user_id});
     chats.reserve(select_result.size());
     for(const auto& row : select_result){
         int id = row[0].as<int>();
@@ -101,8 +101,8 @@ void ChatManager::AddMessage(int sender_id, int chat_id, const std::string& mess
     auto wrapper = pool_.GetConnection();
     pqxx::connection& conn = *wrapper;
     pqxx::work w(conn);
-    w.exec_params(
+    w.exec(
             "INSERT INTO messages (chat_id, sender_id, content) VALUES ($1, $2, $3);",
-            chat_id, sender_id, message);
+             pqxx::params{chat_id, sender_id, message});
     w.commit();
 }

@@ -49,7 +49,7 @@ bool Users::LoadUsers(){
         pqxx::connection& conn = *wrapper;
         pqxx::read_transaction r(conn);
         constexpr auto query = "SELECT id, username, login, password_hash, token FROM users;"_zv;
-        pqxx::result result = r.exec_params(query);
+        pqxx::result result = r.exec(query);
         users_by_login_.reserve(result.size());
         users_by_id_.reserve(result.size());
         for (const auto& row : result){
@@ -116,9 +116,9 @@ std::string Users::RegisterUser(const std::string& login, const std::string& pas
     try {
         auto wrapper = pool_.GetConnection();
         pqxx::work w(*wrapper);
-        auto res = w.exec_params(
+        auto res = w.exec(
             "INSERT INTO users (username, login, password_hash, token) VALUES ($1, $2, $3, $4) RETURNING id;",
-            user_name, login, hashed, token);
+            pqxx::params{user_name, login, hashed, token});
         if (res.empty()) throw std::runtime_error("No ID returned");
         id = res[0][0].as<int>();
         w.commit();
@@ -127,10 +127,13 @@ std::string Users::RegisterUser(const std::string& login, const std::string& pas
         token = GenerateJWT(std::to_string(id), JWT_SECRET_KEY);
         auto w2 = pool_.GetConnection();
         pqxx::work upd(*w2);
-        upd.exec_params("UPDATE users SET token = $1 WHERE id = $2;", token, id);
+        upd.exec("UPDATE users SET token = $1 WHERE id = $2;", pqxx::params{token, id});
         upd.commit();
     } catch (const std::exception& e) {
-        BOOST_LOG_TRIVIAL(error) << "Registration failed: " << e.what();
+        json::object obj;
+        obj["error"] = e.what();
+        obj["message"] = "Registration failed";
+        BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj) << logging::add_value("message", obj);
         throw;
     }
 
@@ -175,4 +178,11 @@ User* Users::FindUserByLogin(const std::string& login) {
     std::scoped_lock lock(mutex_);
     auto it = users_by_login_.find(login);
     return (it != users_by_login_.end()) ? &it->second : nullptr;
+}
+
+void Users::UpdateUserToken(int user_id, const std::string& token) {
+    auto wrapper = pool_.GetConnection();
+    pqxx::work w(*wrapper);
+    w.exec("UPDATE users SET token = $1 WHERE id = $2;", pqxx::params{token, user_id});
+    w.commit();
 }

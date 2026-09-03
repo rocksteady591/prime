@@ -167,6 +167,7 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
     }
 
     std::string token = extract_token_from_request(upgrade_req_);
+    std::cout << "Extracted token: " << token << std::endl;
 
     if (token.empty()) {
         // Нет токена → 401
@@ -179,7 +180,11 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
         beast::error_code ec_write;
         beast::http::write(ws_.next_layer(), res, ec_write);
         if (ec_write) {
-            BOOST_LOG_TRIVIAL(error) << "Failed to write 401 response: " << ec_write.message();
+            json::object obj;
+            obj["Error"] = "write401";
+            BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                << logging::add_value("msg", "Failed to write 401 response: " + ec_write.message());
+
         }
         return;
     }
@@ -197,7 +202,10 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
         beast::error_code ec_write;
         beast::http::write(ws_.next_layer(), res, ec_write);
         if (ec_write) {
-            BOOST_LOG_TRIVIAL(error) << "Failed to write 401 response: " << ec_write.message();
+            json::object obj;
+            obj["Error"] = "write401";
+            BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                << logging::add_value("msg", "Failed to write 401 response: " + ec_write.message());
         }
         return;
     }
@@ -215,11 +223,13 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
         beast::error_code ec_write;
         beast::http::write(ws_.next_layer(), res, ec_write);
         if (ec_write) {
-            BOOST_LOG_TRIVIAL(error) << "Failed to write 401 response: " << ec_write.message();
+            json::object obj;
+            obj["Error"] = "write401";
+            BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                << logging::add_value("msg", "Failed to write 401 response: " + ec_write.message());
         }
         return;
     }
-
     // Сохраняем user_id и регистрируем сессию
     user_id_ = std::to_string(user_id);
     server_->RegisterSession(user_id_, shared_from_this());
@@ -239,14 +249,23 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
     }
 
     // Выполняем WebSocket handshake
-    ws_.async_accept(upgrade_req_, [self = shared_from_this()](beast::error_code ec_accept) {
+    ws_.async_accept(upgrade_req_,
+    [self = shared_from_this()](beast::error_code ec_accept) {
         if (ec_accept) {
-            json::object obj{{"Error", "acceptError"}};
+            json::object obj;
+            obj["Error"] = "acceptError";
+            obj["code"] = ec_accept.value();
+            obj["category"] = ec_accept.category().name();
             BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
-                << logging::add_value("msg", ec_accept.message());
+                << logging::add_value("msg", "WebSocket accept failed: " + ec_accept.message());
             return;
         }
+        json::object obj;
+        obj["status"] = "accepted";
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+            << logging::add_value("msg", "Accept succeeded");
         self->ws_.binary(true);
+        self->buffer_.consume(self->buffer_.size());
         self->DoRead();
     });
 }
@@ -254,17 +273,32 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
 void Session::key_exchange(const std::vector<unsigned char>& received_key) {
     auto [pk, sk] = generate_keypair();
     auto shared_pk = std::make_shared<std::vector<unsigned char>>(std::move(pk));
-    ws_.async_write(net::buffer(shared_pk->data(), shared_pk->size()),
-        [](beast::error_code ec, std::size_t bytes_write) {
+    sk_ = std::move(sk);
+    shared_secret_key_ = compute_shared_key(sk_, received_key);
+
+    json::object obj_log;
+    obj_log["action"] = "sending_public_key";
+    BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj_log)
+                            << logging::add_value("msg", "Sending public key to client...");
+
+    // Отправляем ключ, и только после успешной отправки начинаем новое чтение
+    ws_.async_write(
+        net::buffer(shared_pk->data(), shared_pk->size()),
+        [self = shared_from_this(), shared_pk](beast::error_code ec, std::size_t bytes) {
             if (ec) {
                 json::object obj;
                 obj["Error"] = "pb_keyDontSend";
                 BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
-                    << logging::add_value("msg", ec.message());
+                                         << logging::add_value("msg", ec.message());
+                return;
             }
+            json::object obj;
+            obj["status"] = "public_key_sent";
+            BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+                                    << logging::add_value("msg", "Public key sent, " + std::to_string(bytes) + " bytes");
+            // Теперь начинаем чтение
+            self->DoRead();
         });
-    sk_ = std::move(sk);
-    shared_secret_key_ = compute_shared_key(sk_, received_key);
 }
 
 void Session::SendRaw(const std::string& raw_data) {
@@ -294,6 +328,10 @@ void Session::DoRead() {
                 << logging::add_value("msg", ec.message());
             return;
         }
+        json::object obj_bytes;
+        obj_bytes["bytes"] = bytes_read;
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj_bytes)
+            << logging::add_value("msg", "Received bytes from client");
 
         // Первый шаг: обмен ключами
         if (self->shared_secret_key_.empty()) {
@@ -302,10 +340,8 @@ void Session::DoRead() {
                 self->buffer_.data());
             self->key_exchange(received_key);
             self->buffer_.consume(bytes_read);
-            self->DoRead();
             return;
         }
-
         // Получаем данные из буфера
         std::string data = beast::buffers_to_string(self->buffer_.data());
         self->buffer_.consume(self->buffer_.size());
@@ -431,6 +467,13 @@ void Session::DoRead() {
         });
 }
 
+void Session::Close() {
+    beast::error_code ec;
+    ws_.close(websocket::close_code::normal, ec);
+    // Prevent destruction from unregistering a newer session for this user.
+    user_id_.clear();
+}
+
 Server::Server(Users& users, ChatManager& chat_manager)
     :   threads_count_(std::thread::hardware_concurrency()),
         io_context_(threads_count_),
@@ -442,9 +485,10 @@ Server::Server(Users& users, ChatManager& chat_manager)
                 ssl::context::default_workarounds |
                 ssl::context::no_sslv2 |
                 ssl::context::single_dh_use |
-                ssl::context::no_tlsv1 |          // возможно, отключить старые версии
+                ssl::context::no_tlsv1 |
                 ssl::context::no_tlsv1_1
             );
+            ctx_.set_verify_mode(ssl::verify_none);
             const char* cert_file = std::getenv("SERVER_CERT_FILE");
             const char* key_file = std::getenv("SERVER_KEY_FILE");
             if (!cert_file || !key_file) {
@@ -495,6 +539,13 @@ void Server::RunServer() {
 
 void Server::RegisterSession(const std::string& user_id, std::shared_ptr<Session> session) {
     std::lock_guard lock(sessions_mutex_);
+    auto it = sessions_.find(user_id);
+    if (it != sessions_.end()) {
+        // При обновлении страницы старое соединение может уничтожиться уже
+        // после регистрации нового и не должно удалить новую запись.
+        it->second->Close();
+        sessions_.erase(it);
+    }
     sessions_[user_id] = session;
 }
 

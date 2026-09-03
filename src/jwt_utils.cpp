@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <vector>
 #include <cstring>
+#include <iostream>
 
 const char* JWT_SECRET_KEY = "your-secret-key-change-me";
 
@@ -40,12 +41,13 @@ std::string base64_decode(const std::string& in) {
         "abcdefghijklmnopqrstuvwxyz"
         "0123456789-_";
     int T[256];
-    std::fill(T, T+256, -1);
+    std::fill(std::begin(T), std::end(T), -1);
     for (int i = 0; i < 64; ++i) T[(unsigned char)chars[i]] = i;
 
     std::string out;
     int val = 0, valb = -8;
     for (unsigned char c : in) {
+        if (c == '=') break;
         if (T[c] == -1) break;
         val = (val << 6) + T[c];
         valb += 6;
@@ -93,7 +95,10 @@ bool VerifyJWT(const std::string& token,
                std::string& out_user_id) {
     size_t pos1 = token.find('.');
     size_t pos2 = token.find('.', pos1 + 1);
-    if (pos1 == std::string::npos || pos2 == std::string::npos) return false;
+    if (pos1 == std::string::npos || pos2 == std::string::npos) {
+        std::cout << "Invalid token format" << std::endl;
+        return false;
+    }
 
     std::string header_b64 = token.substr(0, pos1);
     std::string payload_b64 = token.substr(pos1 + 1, pos2 - pos1 - 1);
@@ -108,16 +113,40 @@ bool VerifyJWT(const std::string& token,
          reinterpret_cast<const unsigned char*>(data.c_str()), data.size(),
          digest, &digest_len);
     std::string expected_sig = base64_encode(std::string(reinterpret_cast<char*>(digest), digest_len));
-    if (signature_b64 != expected_sig) return false;
+    std::cout << "Checking signature..." << std::endl;
+    if (signature_b64 != expected_sig) {
+        std::cout << "Signature mismatch!" << std::endl;
+        return false;
+    }
+    std::cout << "Signature is valid!" << std::endl;
 
     // Декодируем payload
     std::string payload_json = base64_decode(payload_b64);
+    if (payload_json.empty()) {
+        std::cout << "Failed to decode payload" << std::endl;
+        return false;
+    }
+    std::cout << "Decoded payload: " << payload_json << std::endl;
+
     auto payload = boost::json::parse(payload_json).as_object();
+
+    // Извлекаем user_id из поля "sub"
+    auto it = payload.find("sub");
+    if (it == payload.end() || !it->value().is_string()) {
+        std::cout << "sub missing or not a string" << std::endl;
+        return false;
+    }
+    out_user_id = it->value().as_string().c_str();
+    std::cout << "Extracted user_id: " << out_user_id << std::endl;
+
+    // Проверяем срок действия
     auto exp = payload["exp"].as_int64();
     auto now = std::chrono::duration_cast<std::chrono::seconds>(
                    std::chrono::system_clock::now().time_since_epoch()).count();
-    if (exp < now) return false; // токен истёк
+    if (exp < now) {
+        std::cout << "Token expired: " << exp << " < " << now << std::endl;
+        return false;
+    }
 
-    out_user_id = payload["sub"].as_string().c_str();
     return true;
 }

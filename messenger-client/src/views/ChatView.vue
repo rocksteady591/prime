@@ -7,7 +7,7 @@
                      :activeId="store.activeChatId"
                      :userId="auth.userId || undefined"
                      @close="sidebarOpen = false"
-                     @select="store.setActiveChat"
+                     @select="onSelectChat"
                      @add="onAddChat" />
         </template>
 
@@ -19,12 +19,14 @@
                 <span>{{ wsStore.status === 'connecting' ? 'Подключение...' : 'Ошибка подключения' }}</span>
             </div>
 
-            <ChatWindow v-else-if="store.activeChatId"
-                        :key="store.activeChatId"
-                        :messages="store.activeMessages"
-                        :currentUserId="auth.userId || ''"
-                        :chatName="store.activeChatName"
-                        @send="onSend" />
+            <ChatWindow
+                v-else-if="store.activeChatId && chat"
+                :key="store.activeChatId"
+                :messages="chat.messages.value"
+                :currentUserId="auth.userId || ''"
+                :chatName="chat.chatName.value"
+                @send="chat.sendMessage"
+            />
 
             <div v-else class="no-chat">
                 Выберите чат или создайте новый
@@ -34,7 +36,7 @@
 </template>
 
 <script setup lang="ts">
-    import { onMounted, ref } from 'vue'
+    import { computed, onMounted, ref } from 'vue'
     import ProgressSpinner from 'primevue/progressspinner'
     import Button from 'primevue/button'
     import MainLayout from '@/components/layout/MainLayout.vue'
@@ -43,12 +45,25 @@
     import { useChatsStore } from '@/stores/chat'
     import { useAuthStore } from '@/stores/auth'
     import { useWebSocketStore } from '@/stores/websocket'
+    import { useChat } from '@/composables/useChat';
+    import { getChatId } from '@/utils/chat';
 
     const store = useChatsStore()
     const auth = useAuthStore()
     const wsStore = useWebSocketStore()
 
     const sidebarOpen = ref(false)
+
+    const activeChatId = computed(() => store.activeChatId);
+    const chat = computed(() => {
+        if (!activeChatId.value) return null;
+        return useChat(activeChatId.value);
+        });
+    
+    function onSelectChat(id: string) {
+        store.setActiveChat(id);
+        sidebarOpen.value = false;
+    }    
 
     onMounted(async () => {
         if (auth.userId) {
@@ -83,11 +98,11 @@
     }
 
     function onAddChat(id: string, name: string) {
-        const myId = auth.userId
-        const ids = [parseInt(myId || '0'), parseInt(id)].sort((a, b) => a - b)
-        const chatId = `chat_${ids[0]}_${ids[1]}`
-        store.addChat(chatId, name)
-        store.setActiveChat(chatId)
+        const myId = auth.userId;
+        if (!myId) return;
+        const chatId = getChatId(myId, id);
+        store.addChat(chatId, name);
+        store.setActiveChat(chatId);
     }
 </script>
 
