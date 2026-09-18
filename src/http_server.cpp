@@ -80,7 +80,8 @@ void CreateTables(pqxx::connection& sql){
                 chat_id integer REFERENCES chats(id) NOT NULL,
                 sender_id integer REFERENCES users(id) NOT NULL,
                 content text NOT NULL,
-                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                delivered BOOLEAN DEFAULT FALSE
             );
         )"_zv);
         txn.exec(R"(

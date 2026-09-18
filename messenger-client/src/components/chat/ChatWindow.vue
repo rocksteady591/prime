@@ -13,14 +13,16 @@
     </div>
 
     <!-- Сообщения -->
-    <div class="messages-container" ref="messagesContainer">
+    <div class="messages-container" ref="messagesContainer" @scroll="handleScroll">
       <MessageBubble
         v-for="msg in messages"
-        :key="msg.timestamp + msg.sender + msg.text"
+        :key="msg.id || (msg.timestamp + msg.sender + msg.text)"
         :text="msg.text"
         :sender="msg.sender"
         :isOutgoing="msg.sender === currentUserId"
         :timestamp="msg.timestamp"
+        :status="msg.status"
+        @resend="() => onResend"
       />
     </div>
 
@@ -52,18 +54,33 @@ import MessageBubble from './MessageBubble.vue'
 import type { Message } from '@/types/message'
 
 const props = defineProps<{
-  messages: Message[]
+  messages: readonly Message[]
   currentUserId: string
   chatName?: string
 }>()
 
+// Добавляем эмиты для loadMore и resend
 const emit = defineEmits<{
   (e: 'send', text: string): void
+  (e: 'loadMore'): void
+  (e: 'resend', msgId: string): void
 }>()
 
 const newMessage = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
-const isOnline = ref(true) // можно позже связать с WebSocket
+const isOnline = ref(true)
+const previousScrollHeight = ref(0)
+const isLoadingMore = ref(false)
+
+function handleScroll() {
+  if (!messagesContainer.value) return
+  const { scrollTop } = messagesContainer.value
+  if (scrollTop <= 50 && !isLoadingMore.value) {
+    isLoadingMore.value = true
+    previousScrollHeight.value = messagesContainer.value.scrollHeight
+    emit('loadMore')
+  }
+}
 
 function onSend() {
   const text = newMessage.value.trim()
@@ -72,14 +89,30 @@ function onSend() {
   newMessage.value = ''
 }
 
+// Обработчик повторной отправки
+function onResend(msgId: string) {
+  emit('resend', msgId)
+}
+
 watch(
   () => props.messages.length,
-  () => {
-    nextTick(() => {
-      if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-      }
-    })
+  (newLen, oldLen) => {
+    if (isLoadingMore.value && newLen > oldLen) {
+      nextTick(() => {
+        if (messagesContainer.value) {
+          const newScrollHeight = messagesContainer.value.scrollHeight
+          const delta = newScrollHeight - previousScrollHeight.value
+          messagesContainer.value.scrollTop = delta // сохраняем позицию
+          isLoadingMore.value = false
+        }
+      })
+    } else if (!isLoadingMore.value) {
+      nextTick(() => {
+        if (messagesContainer.value) {
+          messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+        }
+      })
+    }
   }
 )
 </script>
@@ -123,7 +156,7 @@ watch(
 
 .online-status {
   font-size: 0.7rem;
-  color: #4CAF50;
+  color: var(--status-online);
   margin-left: 0.5rem;
 }
 

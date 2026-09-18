@@ -5,6 +5,21 @@
       <div class="sender-name" v-if="!isOutgoing">{{ sender }}</div>
       <div class="text">{{ text }}</div>
       <div class="time">{{ formatTime(timestamp) }}</div>
+      <span v-if="isOutgoing" class="status-indicator">
+          <i v-if="status === 'pending'" class="pi pi-spin pi-spinner" />
+          <i v-else-if="status === 'sent'" class="pi pi-check" />
+          <i v-else-if="status === 'delivered'" class="pi pi-check-circle" />
+          <i v-else-if="status === 'error'" class="pi pi-exclamation-circle" style="color: var(--danger);" />
+      </span>
+      <Button
+          v-if="isOutgoing && status === 'error'"
+          icon="pi pi-refresh"
+          size="small"
+          text
+          severity="danger"
+          @click="emit('resend')"
+          class="resend-btn"
+        />
     </div>
     <Avatar v-if="isOutgoing" icon="pi pi-user" size="normal" shape="circle" class="avatar" />
   </div>
@@ -12,12 +27,18 @@
 
 <script setup lang="ts">
 import Avatar from 'primevue/avatar'
+import Button from 'primevue/button'
 
-defineProps<{
+const props = defineProps<{
   text: string
   sender: string
   isOutgoing: boolean
   timestamp: number
+  status?: 'pending' | 'sent' | 'delivered' | 'error'
+}>()
+
+const emit = defineEmits<{
+  (e: 'resend'): void
 }>()
 
 function formatTime(ts: number) {
@@ -26,6 +47,29 @@ function formatTime(ts: number) {
 </script>
 
 <style scoped>
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+.time {
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+.status-indicator {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.outgoing .status-indicator {
+  color: rgba(255,255,255,0.8);
+}
+.resend-btn {
+  padding: 0;
+  font-size: 0.7rem;
+}
+
 .message-row {
   display: flex;
   align-items: flex-end;

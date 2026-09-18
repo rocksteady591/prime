@@ -64,6 +64,7 @@ public:
     std::shared_ptr<Session> FindSession(const std::string& user_id);
     Users& GetUsers();
     ChatManager& GetManager();
+    void SendOfflineMessages();
 private:
     unsigned short threads_count_;
     const unsigned short port_ = 9000;

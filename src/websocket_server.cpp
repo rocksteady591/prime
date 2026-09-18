@@ -296,6 +296,7 @@ void Session::key_exchange(const std::vector<unsigned char>& received_key) {
             obj["status"] = "public_key_sent";
             BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
                                     << logging::add_value("msg", "Public key sent, " + std::to_string(bytes) + " bytes");
+            self->SendOfflineMessages();
             // Теперь начинаем чтение
             self->DoRead();
         });
@@ -470,7 +471,6 @@ void Session::DoRead() {
 void Session::Close() {
     beast::error_code ec;
     ws_.close(websocket::close_code::normal, ec);
-    // Prevent destruction from unregistering a newer session for this user.
     user_id_.clear();
 }
 
@@ -587,4 +587,47 @@ int main() {
     }
 
     return 0;
+}
+
+void Session::SendOfflineMessages() {
+    if (user_id_.empty()) return;
+    int user_id = std::stoi(user_id_);
+    // Получаем все недоставленные сообщения для этого пользователя
+    auto msgs = server_->GetManager().GetUndeliveredMessages(user_id);
+    if (msgs.empty()) {
+        BOOST_LOG_TRIVIAL(info) << "No undelivered messages for user " << user_id;
+        return;
+    }
+    BOOST_LOG_TRIVIAL(info) << "Sending " << msgs.size() << " undelivered messages to user " << user_id;
+
+    for (const auto& msg : msgs) {
+        // Получаем отправителя (может быть не в сети, но это не важно)
+        std::string sender_id = std::to_string(msg.sender_id);
+        std::string recipient_id = std::to_string(user_id);
+
+        // Шифруем сообщение для текущего пользователя (ключ уже есть)
+        std::vector<unsigned char> nonce(crypto_box_NONCEBYTES);
+        randombytes_buf(nonce.data(), nonce.size());
+
+        std::vector<unsigned char> encrypted(msg.text.size() + crypto_box_MACBYTES);
+        crypto_box_easy_afternm(
+            encrypted.data(),
+            reinterpret_cast<const unsigned char*>(msg.text.data()),
+            msg.text.size(),
+            nonce.data(),
+            shared_secret_key_.data());   // текущий shared key (клиента)
+
+        messenger::SecureEnvelope env;
+        env.set_ciphertext(encrypted.data(), encrypted.size());
+        env.set_nonce(nonce.data(), nonce.size());
+        env.set_sender_id(sender_id);
+        env.set_recipient_id(recipient_id);
+
+        std::string serialized;
+        env.SerializeToString(&serialized);
+        SendRaw(serialized);
+
+        // Помечаем сообщение как доставленное
+        server_->GetManager().MarkMessageDelivered(msg.id);
+    }
 }

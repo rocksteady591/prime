@@ -8,6 +8,7 @@ struct Message{
     int sender_id;
     std::string text;
     std::string send_time;
+    bool delivered = false;
 };
 
 struct ChatInfo{
@@ -30,6 +31,8 @@ public:
     void AddMessage(int sender_id, int chat_id, const std::string& message);
     std::vector<ChatInfo> GetChats(int user_id);
     std::vector<ContactInfo> GetContacts(int user_id);
+    std::vector<Message> GetUndeliveredMessages(int user_id);
+    void MarkMessageDelivered(int msg_id);
 private:
     ConnectionPool& pool_;
 };

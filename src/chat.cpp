@@ -102,7 +102,44 @@ void ChatManager::AddMessage(int sender_id, int chat_id, const std::string& mess
     pqxx::connection& conn = *wrapper;
     pqxx::work w(conn);
     w.exec(
-            "INSERT INTO messages (chat_id, sender_id, content) VALUES ($1, $2, $3);",
+            "INSERT INTO messages (chat_id, sender_id, content, delivered) VALUES ($1, $2, $3, FALSE);",
              pqxx::params{chat_id, sender_id, message});
+    w.commit();
+}
+
+std::vector<Message> ChatManager::GetUndeliveredMessages(int user_id) {
+    std::vector<Message> msgs;
+    auto wrapper = pool_.GetConnection();
+    pqxx::read_transaction r(*wrapper);
+    // Находим все сообщения, где получатель = user_id (проверяем через чаты)
+    auto result = r.exec(
+        R"(
+            SELECT m.id, m.chat_id, m.sender_id, m.content, m.sent_at
+            FROM messages m
+            JOIN chats c ON m.chat_id = c.id
+            WHERE (c.user1_id = $1 OR c.user2_id = $1)
+              AND m.delivered = FALSE
+              AND m.sender_id != $1
+            ORDER BY m.sent_at ASC
+        )"_zv,
+        pqxx::params{user_id});
+    msgs.reserve(result.size());
+    for (const auto& row : result) {
+        msgs.emplace_back(
+            row[0].as<int>(),
+            row[1].as<int>(),
+            row[2].as<int>(),
+            row[3].as<std::string>(),
+            row[4].as<std::string>(),
+            false  // delivered = false (пока)
+        );
+    }
+    return msgs;
+}
+
+void ChatManager::MarkMessageDelivered(int msg_id) {
+    auto wrapper = pool_.GetConnection();
+    pqxx::work w(*wrapper);
+    w.exec("UPDATE messages SET delivered = TRUE WHERE id = $1;", pqxx::params{msg_id});
     w.commit();
 }

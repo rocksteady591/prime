@@ -16,6 +16,8 @@
       <i class="pi pi-user" />
       <span>Аккаунт</span>
     </router-link>
+    <div class="nav-spacer"></div>
+    <ThemeToggle />
     <a v-if="auth.token" class="nav-item logout" @click="handleLogout">
       <i class="pi pi-sign-out" />
       <span>Выйти</span>
@@ -26,6 +28,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -77,9 +80,9 @@ function handleLogout() {
 }
 .logout {
   margin-top: auto;
-  color: #f87171;
+  color: var(--danger);
 }
 .logout:hover {
-  background: rgba(248, 113, 113, 0.1);
+  background: var(--danger-bg);
 }
 </style>
