@@ -42,6 +42,7 @@ public:
     void on_handshake(beast::error_code ec);
     void SendRaw(const std::string& raw_data);
     void DoRead();
+    void SendOfflineMessages();
 private:
     void key_exchange(const std::vector<unsigned char>& received_key);
     void on_read(const beast::error_code& ec, std::size_t bytes_transfered);
