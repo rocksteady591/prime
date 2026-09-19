@@ -123,3 +123,9 @@ cmake --build .
 
 Пример добавления переменной среды Linux/MacOs
 export PG_DB_URL="postgres://user:password@host:port/db_name"
+
+сборка через xmake
+
+в корне проекта выполнить команду: xmake
+
+для запуска нужного такргета: xmake run target_name
