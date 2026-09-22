@@ -16,3 +16,4 @@ compile_commands.json
 .DS_Store
 .DS_Store
 /.xmake
+.clangd

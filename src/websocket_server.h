@@ -52,6 +52,7 @@ private:
     std::vector<unsigned char> sk_;
     std::string user_id_;
     Server* server_;
+    net::strand<net::io_context::executor_type> strand_;
 private:
     beast::http::request<beast::http::string_body> upgrade_req_;
 };
@@ -66,6 +67,7 @@ public:
     Users& GetUsers();
     ChatManager& GetManager();
     void SendOfflineMessages();
+    net::io_context& GetContext();
 private:
     unsigned short threads_count_;
     const unsigned short port_ = 9000;

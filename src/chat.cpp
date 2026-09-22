@@ -102,7 +102,7 @@ void ChatManager::AddMessage(int sender_id, int chat_id, const std::string& mess
     pqxx::connection& conn = *wrapper;
     pqxx::work w(conn);
     w.exec(
-            "INSERT INTO messages (chat_id, sender_id, content, delivered) VALUES ($1, $2, $3, FALSE);",
+            "INSERT INTO messages (chat_id, sender_id, content, delivered) VALUES ($1, $2, $3, 'sent');",
              pqxx::params{chat_id, sender_id, message});
     w.commit();
 }
@@ -118,7 +118,7 @@ std::vector<Message> ChatManager::GetUndeliveredMessages(int user_id) {
             FROM messages m
             JOIN chats c ON m.chat_id = c.id
             WHERE (c.user1_id = $1 OR c.user2_id = $1)
-              AND m.delivered = FALSE
+              AND m.delivered = 'sent'
               AND m.sender_id != $1
             ORDER BY m.sent_at ASC
         )"_zv,

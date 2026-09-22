@@ -113,8 +113,12 @@ const std::pair<std::vector<unsigned char>, std::vector<unsigned char>> generate
     return { public_key, private_key };
 }
 
+net::io_context& Server::GetContext(){
+    return io_context_;
+}
+
 Session::Session(tcp::socket&& socket, ssl::context& ctx,  Server* server)
-    : ws_(std::move(socket), ctx), server_(server) {
+    : ws_(std::move(socket), ctx), server_(server), strand_(net::make_strand(server->GetContext())) {
 }
 
 Session::~Session() {
@@ -304,6 +308,8 @@ void Session::key_exchange(const std::vector<unsigned char>& received_key) {
 
 void Session::SendRaw(const std::string& raw_data) {
     auto sp = std::make_shared<std::string>(raw_data);
+
+    //add post
     ws_.async_write(
         net::buffer(*sp),
         [self = shared_from_this(), sp](beast::error_code ec, std::size_t) {

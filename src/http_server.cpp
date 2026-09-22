@@ -55,6 +55,7 @@ void CreateTables(pqxx::connection& sql){
             "CREATE INDEX IF NOT EXISTS us_pair_idx ON chats (LEAST(user1_id, user2_id), GREATEST(user1_id, user2_id));"_zv;
         constexpr auto create_index_chat_id = "CREATE INDEX IF NOT EXISTS messages_chat_id_idx ON messages(chat_id);"_zv;
         constexpr auto create_index_send_at = "CREATE INDEX IF NOT EXISTS messages_sand_at_idx ON messages(sender_id DESC);"_zv;
+        constexpr auto create_message_enum = "CREATE TYPE message_status AS ENUM ('sent', 'delivered');"_zv;
         txn.exec(R"(
             CREATE TABLE IF NOT EXISTS users(
                 id SERIAL PRIMARY KEY,
@@ -74,6 +75,9 @@ void CreateTables(pqxx::connection& sql){
                 UNIQUE(user1_id, user2_id)
             );
         )"_zv);
+
+        txn.exec(create_message_enum);
+        
         txn.exec(R"(
             CREATE TABLE IF NOT EXISTS messages(
                 id SERIAL PRIMARY KEY,
@@ -81,7 +85,7 @@ void CreateTables(pqxx::connection& sql){
                 sender_id integer REFERENCES users(id) NOT NULL,
                 content text NOT NULL,
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                delivered BOOLEAN DEFAULT FALSE
+                status message_status DEFAULT 'sent'
             );
         )"_zv);
         txn.exec(R"(
