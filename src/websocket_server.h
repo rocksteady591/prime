@@ -43,9 +43,11 @@ public:
     void SendRaw(const std::string& raw_data);
     void DoRead();
     void SendOfflineMessages();
+    net::strand<net::io_context::executor_type>& GetStrand() {return strand_;}
 private:
     void key_exchange(const std::vector<unsigned char>& received_key);
     void on_read(const beast::error_code& ec, std::size_t bytes_transfered);
+    void DoSendRaw(std::string raw_data);
     websocket::stream<beast::ssl_stream<beast::tcp_stream>> ws_;
     beast::flat_buffer buffer_;
     std::vector<unsigned char> shared_secret_key_;

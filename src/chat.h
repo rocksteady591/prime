@@ -8,7 +8,7 @@ struct Message{
     int sender_id;
     std::string text;
     std::string send_time;
-    bool delivered = false;
+    std::string delivered = "sent";
 };
 
 struct ChatInfo{

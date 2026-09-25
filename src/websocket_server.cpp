@@ -9,6 +9,7 @@
 #include <boost/beast/http/field.hpp>
 #include <boost/beast/http/fields_fwd.hpp>
 #include <boost/beast/websocket.hpp>
+#include <boost/asio/bind_executor.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/log/utility/setup/console.hpp>
@@ -32,6 +33,7 @@
 #include <sstream>
 
 #include "websocket_server.h"
+#include "boost/asio/post.hpp"
 #include "message.pb.h"
 #include "log.h"
 #include "user.h"
@@ -129,19 +131,14 @@ Session::~Session() {
 
 void Session::Run() {
 
-    net::dispatch(ws_.get_executor(),
+    net::dispatch(strand_,
         beast::bind_front_handler(&Session::on_run, shared_from_this()));
-    // Читаем HTTP-запрос апгрейда WebSocket
-    /*beast::http::async_read(ws_.next_layer(),
-                            buffer_,
-                            upgrade_req_,
-                            beast::bind_front_handler(&Session::on_read, shared_from_this()));*/
 }
 
 void Session::on_run(){
     ws_.next_layer().async_handshake(
         ssl::stream_base::server,
-        beast::bind_front_handler(&Session::on_handshake, shared_from_this())
+        net::bind_executor(strand_, beast::bind_front_handler(&Session::on_handshake, shared_from_this()))
     );
 }
 
@@ -157,7 +154,7 @@ void Session::on_handshake(beast::error_code ec){
     beast::http::async_read(ws_.next_layer(),
                             buffer_,
                             upgrade_req_,
-                            beast::bind_front_handler(&Session::on_read, shared_from_this()));
+                            net::bind_executor(strand_, beast::bind_front_handler(&Session::on_read, shared_from_this())));
 
 }
 
@@ -254,7 +251,7 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
 
     // Выполняем WebSocket handshake
     ws_.async_accept(upgrade_req_,
-    [self = shared_from_this()](beast::error_code ec_accept) {
+        net::bind_executor(strand_, [self = shared_from_this()](beast::error_code ec_accept) {
         if (ec_accept) {
             json::object obj;
             obj["Error"] = "acceptError";
@@ -271,7 +268,8 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
         self->ws_.binary(true);
         self->buffer_.consume(self->buffer_.size());
         self->DoRead();
-    });
+    })
+    );
 }
 
 void Session::key_exchange(const std::vector<unsigned char>& received_key) {
@@ -288,7 +286,7 @@ void Session::key_exchange(const std::vector<unsigned char>& received_key) {
     // Отправляем ключ, и только после успешной отправки начинаем новое чтение
     ws_.async_write(
         net::buffer(shared_pk->data(), shared_pk->size()),
-        [self = shared_from_this(), shared_pk](beast::error_code ec, std::size_t bytes) {
+        net::bind_executor(strand_, [self = shared_from_this(), shared_pk](beast::error_code ec, std::size_t bytes) {
             if (ec) {
                 json::object obj;
                 obj["Error"] = "pb_keyDontSend";
@@ -303,23 +301,25 @@ void Session::key_exchange(const std::vector<unsigned char>& received_key) {
             self->SendOfflineMessages();
             // Теперь начинаем чтение
             self->DoRead();
-        });
+        }) );
 }
 
 void Session::SendRaw(const std::string& raw_data) {
-    auto sp = std::make_shared<std::string>(raw_data);
+    net::post(strand_, [self = shared_from_this(), data = std::string(raw_data)](){
+        self->DoSendRaw(std::move(data));
+    });
+}
 
-    //add post
-    ws_.async_write(
-        net::buffer(*sp),
-        [self = shared_from_this(), sp](beast::error_code ec, std::size_t) {
-            if (ec) {
-                json::object obj;
-                obj["Error"] = "writeError";
-                BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
-                    << logging::add_value("msg", ec.message());
-            }
-        });
+void Session::DoSendRaw(std::string raw_data){
+    auto raw_ptr = std::make_shared<std::string>(std::move(raw_data));
+    ws_.async_write(net::buffer(*raw_ptr), net::bind_executor(strand_, [self = shared_from_this()](beast::error_code ec, std::size_t){
+        if (ec) {
+            json::object obj;
+            obj["Error"] = "writeError";
+            BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                << logging::add_value("msg", ec.message());
+        }
+    }));
 }
 
 ChatManager& Server::GetManager(){
@@ -327,7 +327,8 @@ ChatManager& Server::GetManager(){
 }
 
 void Session::DoRead() {
-    ws_.async_read(buffer_, [self = shared_from_this()](beast::error_code ec, std::size_t bytes_read) {
+    ws_.async_read(buffer_, net::bind_executor(strand_, 
+        [self = shared_from_this()](beast::error_code ec, std::size_t bytes_read) {
         if (ec) {
             json::object obj;
             obj["Error"] = "error read";
@@ -428,33 +429,32 @@ void Session::DoRead() {
             if (!recipient_id.empty()) {
                 auto target = self->server_->FindSession(recipient_id);
                 if (target) {
-                    // Перешифровываем для получателя
-                    std::vector<unsigned char> new_nonce(crypto_box_NONCEBYTES);
-                    randombytes_buf(new_nonce.data(), new_nonce.size());
+                    net::dispatch(target->GetStrand(), [message = std::move(message), target, sender_id, recipient_id](){
+                        // Перешифровываем для получателя
+                        std::vector<unsigned char> new_nonce(crypto_box_NONCEBYTES);
+                        randombytes_buf(new_nonce.data(), new_nonce.size());
+                        std::vector<unsigned char> encrypted(message.size() + crypto_box_MACBYTES);
+                        crypto_box_easy_afternm(
+                            encrypted.data(),
+                            reinterpret_cast<const unsigned char*>(message.data()),
+                            message.size(),
+                            new_nonce.data(),
+                            target->shared_secret_key_.data());   // ключ получателя
 
-                    std::vector<unsigned char> encrypted(message.size() + crypto_box_MACBYTES);
-                    crypto_box_easy_afternm(
-                        encrypted.data(),
-                        reinterpret_cast<const unsigned char*>(message.data()),
-                        message.size(),
-                        new_nonce.data(),
-                        target->shared_secret_key_.data());   // ключ получателя
-
-                    messenger::SecureEnvelope forward_env;
-                    forward_env.set_ciphertext(encrypted.data(), encrypted.size());
-                    forward_env.set_nonce(new_nonce.data(), new_nonce.size());
-                    forward_env.set_sender_id(sender_id);
-                    forward_env.set_recipient_id(recipient_id);
-
-                    std::string serialized;
-                    forward_env.SerializeToString(&serialized);
-                    target->SendRaw(serialized);
-
-                    json::object obj;
-                    obj["from"] = sender_id;
-                    obj["to"] = recipient_id;
-                    BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
-                        << logging::add_value("msg", "Message forwarded (re-encrypted)");
+                        messenger::SecureEnvelope forward_env;
+                        forward_env.set_ciphertext(encrypted.data(), encrypted.size());
+                        forward_env.set_nonce(new_nonce.data(), new_nonce.size());
+                        forward_env.set_sender_id(sender_id);
+                        forward_env.set_recipient_id(recipient_id);
+                        std::string serialized;
+                        forward_env.SerializeToString(&serialized);
+                        target->SendRaw(serialized);
+                        json::object obj;
+                        obj["from"] = sender_id;
+                        obj["to"] = recipient_id;
+                        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+                            << logging::add_value("msg", "Message forwarded (re-encrypted)");
+                    });
                 }
                 else {
                     // Получатель не в сети
@@ -471,7 +471,8 @@ void Session::DoRead() {
             self->DoRead();
             return;
         }
-        });
+        }
+    ));
 }
 
 void Session::Close() {
@@ -546,7 +547,7 @@ void Server::RunServer() {
 void Server::RegisterSession(const std::string& user_id, std::shared_ptr<Session> session) {
     std::lock_guard lock(sessions_mutex_);
     auto it = sessions_.find(user_id);
-    if (it != sessions_.end()) {
+    if (it != sessions_.end() && it->second == session) {
         // При обновлении страницы старое соединение может уничтожиться уже
         // после регистрации нового и не должно удалить новую запись.
         it->second->Close();

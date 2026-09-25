@@ -131,7 +131,7 @@ std::vector<Message> ChatManager::GetUndeliveredMessages(int user_id) {
             row[2].as<int>(),
             row[3].as<std::string>(),
             row[4].as<std::string>(),
-            false  // delivered = false (пока)
+            "sent"  // delivered = sent (пока)
         );
     }
     return msgs;
@@ -140,6 +140,6 @@ std::vector<Message> ChatManager::GetUndeliveredMessages(int user_id) {
 void ChatManager::MarkMessageDelivered(int msg_id) {
     auto wrapper = pool_.GetConnection();
     pqxx::work w(*wrapper);
-    w.exec("UPDATE messages SET delivered = TRUE WHERE id = $1;", pqxx::params{msg_id});
+    w.exec("UPDATE messages SET delivered = $1 WHERE id = $2;", pqxx::params{"delivered",msg_id});
     w.commit();
 }
