@@ -121,8 +121,20 @@ conan install . --build=missing --output-folder=build -s build_type=Debug -s com
 
 cmake --build .
 
-Пример добавления переменной среды Linux/MacOs
-export PG_DB_URL="postgres://user:password@host:port/db_name"
+nano ~/.bashrc
+
+# Динамический IP Windows для PostgreSQL
+WSL_HOST_IP=$(ip route show default | awk '{print $3}')
+export PG_DB_URL="postgres://postgres:postgres@${WSL_HOST_IP}:5432/postgres"
+
+
+ openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes -subj "/CN=127.0.0.1"
+export SERVER_CERT_FILE=/mnt/e/primal/server.crt
+export SERVER_KEY_FILE=/mnt/e/primal/server.key
+
+export SERVER_CERT_FILE=/mnt/e/primal/127.0.0.1+1.pem
+export SERVER_KEY_FILE=/mnt/e/primal/127.0.0.1+1-key.pem
+
 
 сборка через xmake
 

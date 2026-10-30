@@ -3,7 +3,10 @@ import { useChatsStore } from '@/stores/chat';
 import { useAuthStore } from '@/stores/auth';
 import { useWebSocketStore } from '@/stores/websocket';
 import { getRecipientId, getChatId } from '@/utils/chat';
-import type { Message } from '@/types/message';
+import { addToOutbox, updateOutboxStatus } from '@/utils/outbox';
+import type { Attachment, Message } from '@/types/message';
+
+const ECHO_TIMEOUT_MS = 10_000
 
 export function useChat(chatIdRef: Ref<string | null>) {
   const chatsStore = useChatsStore();
@@ -39,40 +42,57 @@ export function useChat(chatIdRef: Ref<string | null>) {
     return chat?.name || 'Чат';
   });
 
-  // Отправка сообщения
-  function sendMessage(text: string): boolean {
-    const trimmed = text.trim();
-    if (!trimmed) return false;
-    const chatId = chatIdRef.value;
-    if (!chatId) {
-      console.warn('Нет активного чата');
-      return false;
-    }
-    if (!authStore.userId) {
-      console.warn('Пользователь не авторизован');
-      return false;
-    }
-    const recipient = recipientId.value;
-    if (!recipient) {
-      console.warn('Не удалось определить получателя');
-      return false;
-    }
+  // ==========================================================
+  //  Отправка сообщения
+  //  pending → (ws.send успешен) → sent  |  иначе → error
+  //  Всё сразу дублируется в outbox (localStorage) для
+  //  восстановления после F5.
+  // ==========================================================
+  function sendMessage(text: string, attachments: Attachment[] = []): boolean {
+    const trimmed = text.trim()
+    if (!trimmed && !attachments.length) return false
+    const chatId = chatIdRef.value
+    if (!chatId || !authStore.userId) return false
+    const recipient = recipientId.value
+    if (!recipient) return false
 
     const tempMsg: Message = {
-      id: `temp_${Date.now()}_${Math.random()}`,
+      id: `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       sender: authStore.userId,
       text: trimmed,
       timestamp: Date.now(),
-      status: 'pending',
-    };
+      status: 'pending',                    // ← НЕ 'sent'
+      attachments: attachments.length ? attachments : undefined,
+    }
 
     chatsStore.addMessage(chatId, tempMsg)
+    addToOutbox(chatId, tempMsg)
 
-    const sent = wsStore.sendMessage(recipient, trimmed);
-    if (!sent) {
-      chatsStore.updateMessageStatus(chatId, tempMsg.id!, 'error');
+    const queued = wsStore.sendMessage(recipient, trimmed)
+
+    if (!queued) {
+      // ws не открыт / sharedKey отсутствует — сразу error
+      chatsStore.updateMessageStatus(chatId, tempMsg.id!, 'error')
+      updateOutboxStatus(chatId, tempMsg.id!, 'error')
+      return false
     }
-    return sent;
+
+    // Ждём эха. Если за 10с не пришло — сервер, скорее всего, не получил.
+    scheduleEchoTimeout(chatId, tempMsg.id!)
+    return true
+  }
+
+  function scheduleEchoTimeout(chatId: string, msgId: string) {
+    setTimeout(() => {
+      const msgs = chatsStore.messagesMap[chatId]
+      if (!msgs) return
+      const m = msgs.find(x => x.id === msgId)
+      if (m && m.status === 'pending') {
+        console.warn('[useChat] echo timeout → error', msgId)
+        chatsStore.updateMessageStatus(chatId, msgId, 'error')
+        updateOutboxStatus(chatId, msgId, 'error')
+      }
+    }, ECHO_TIMEOUT_MS)
   }
 
   const loadingMore = ref(false);
@@ -86,40 +106,40 @@ export function useChat(chatIdRef: Ref<string | null>) {
 
     loadingMore.value = true;
     try {
-      // Определяем offset как текущее количество сообщений
       const offset = currentMessages.length;
-      await chatsStore.loadHistory(chatId, limit, offset, true); // append = true
+      await chatsStore.loadHistory(chatId, limit, offset, true);
     } finally {
       loadingMore.value = false;
     }
   }
 
-  // Метод для повторной отправки сообщения с ошибкой
+  // ==========================================================
+  //  Повторная отправка сообщения со статусом 'error'
+  // ==========================================================
   function resendMessage(msgId: string) {
     const chatId = chatIdRef.value;
     if (!chatId) return;
-    const msgs = chatsStore.messagesMap[chatId];
-    if (!msgs) return;
-    const msg = msgs.find(m => m.id === msgId);
-    if (!msg || msg.status !== 'error') return;
     if (!authStore.userId) return;
 
-    // Меняем статус на pending
-    chatsStore.updateMessageStatus(chatId, msgId, 'pending');
+    const msgs = chatsStore.messagesMap[chatId];
+    if (!msgs) return;
 
-    // Повторно отправляем
+    const msg = msgs.find(m => m.id === msgId);
+    if (!msg || msg.status !== 'error') return;
+
     const recipient = recipientId.value;
-    if (!recipient) {
-      chatsStore.updateMessageStatus(chatId, msgId, 'error');
-      return;
-    }
+    if (!recipient) return;
+
+    // pending на время переотправки — на случай, если кто-то
+    // подписан на статус (спиннер, анимация, ...)
+    chatsStore.updateMessageStatus(chatId, msgId, 'pending');
+    updateOutboxStatus(chatId, msgId, 'pending');
+
     const sent = wsStore.sendMessage(recipient, msg.text);
-    if (!sent) {
-      chatsStore.updateMessageStatus(chatId, msgId, 'error');
-    } else {
-      // Если нужно обновить статус на sent позже – можно подписаться на подтверждение
-      // Пока оставляем как есть, статус изменится при получении подтверждения от сервера
-    }
+
+    const nextStatus: Message['status'] = sent ? 'sent' : 'error';
+    chatsStore.updateMessageStatus(chatId, msgId, nextStatus);
+    updateOutboxStatus(chatId, msgId, nextStatus);
   }
 
   return {

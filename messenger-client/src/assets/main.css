@@ -1,31 +1,177 @@
-/* ===== Design Tokens ===== */
+/* ============================================================
+   1. DESIGN TOKENS
+   ============================================================ */
 :root {
-  /* Цветовая палитра */
+  /* ---------- Brand / Accent ---------- */
+  --accent: #2E6BFF;
+  --accent-hover: #1F55E0;
+  --accent-active: #1745C2;
+  --accent-glow: rgba(46, 107, 255, 0.18);
+  --accent-soft: rgba(46, 107, 255, 0.10);
+
+  /* ---------- Success / Warning / Danger ---------- */
+  --success: #22C55E;
+  --success-soft: rgba(34, 197, 94, 0.12);
+  --warning: #F59E0B;
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --danger: #EF4444;
+  --danger-soft: rgba(239, 68, 68, 0.12);
+  --info: #38BDF8;
+
+  /* ---------- Radius ---------- */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-full: 999px;
+
+  /* ---------- Layout ---------- */
+  --nav-width: 72px;
+  --sidebar-width: 320px;
+  --right-panel-width: 300px;
+  --header-height: 64px;
+
+  /* ---------- Typography ---------- */
+  --font-main: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+
+  /* ---------- Motion ---------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-fast: 150ms var(--ease-out);
+  --transition-base: 250ms var(--ease-out);
+  --transition-slow: 400ms var(--ease-out);
+
+  /* ---------- Shadows ---------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.10);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.18);
+  --shadow-glow: 0 0 0 3px var(--accent-glow);
+
+  /* ---------- Default: DARK ---------- */
   --bg-primary: #0F1115;
   --bg-secondary: #181B20;
+  --bg-elevated: #1F232B;
   --bg-hover: #22262F;
-  --bg-elevated: #1E2229;
+  --bg-active: #2A2F3A;
 
   --text-main: #ECEFF4;
+  --text-secondary: #C3C8D2;
   --text-muted: #8F96A3;
-  --text-inverse: #FFFFFF;
+  --text-faint: #5A6070;
 
-  --accent: #2E6BFF;
-  --accent-glow: rgba(46, 107, 255, 0.15);
-  --accent-hover: #1E5AE0;
+  --border-color: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
 
-  --border-color: rgba(255, 255, 255, 0.06);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
 
-  /* Размеры */
-  --sidebar-width: 340px;
-  --radius-lg: 16px;
-  --radius-sm: 8px;
-  --radius-full: 9999px;
+  color-scheme: dark;
+}
 
-  /* Шрифты */
-  --font-main: 'Inter', system-ui, -apple-system, sans-serif;
-  --transition-fast: all 0.15s ease;
+/* ---------- LIGHT OVERRIDE ---------- */
+html.light-mode {
+  --bg-primary: #F7F8FA;
+  --bg-secondary: #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-hover: #F0F2F5;
+  --bg-active: #E6E9EF;
+
+  --text-main: #14161A;
+  --text-secondary: #3E424B;
+  --text-muted: #6B7280;
+  --text-faint: #9AA0AA;
+
+  --border-color: rgba(15, 17, 21, 0.08);
+  --border-strong: rgba(15, 17, 21, 0.16);
+
+  --scrollbar-thumb: rgba(15, 17, 21, 0.15);
+  --scrollbar-thumb-hover: rgba(15, 17, 21, 0.28);
+
+  --shadow-sm: 0 1px 2px rgba(15, 17, 21, 0.06);
+  --shadow-md: 0 4px 14px rgba(15, 17, 21, 0.08);
+  --shadow-lg: 0 16px 40px rgba(15, 17, 21, 0.12);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  html:not(.dark-mode) {
+    /* тот же набор, что в .light-mode — можно вынести в миксин/дублировать */
+  }
+}
+
+/* ============================================================
+   2. RESET & GLOBALS
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-main);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-main);
+  background: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02","cv03","cv04","cv11";
+}
+
+/* ============================================================
+   3. CUSTOM SCROLLBAR (тонкий, не ломает вёрстку)
+   ============================================================ */
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background var(--transition-fast);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ============================================================
+   4. FOCUS & A11Y
+   ============================================================ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   5. UTILITIES
+   ============================================================ */
+.text-muted { color: var(--text-muted); }
+.text-sm { font-size: 0.8rem; }
+.text-xs { font-size: 0.7rem; }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.gap-2 { gap: 0.5rem; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
 
 /* ===== Сброс и база ===== */
@@ -60,6 +206,14 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+.search-flash .bubble {
+  animation: searchFlash 1.2s var(--ease-out);
+}
+@keyframes searchFlash {
+  0%, 100% { box-shadow: none; }
+  30%      { box-shadow: 0 0 0 3px var(--accent-glow); }
 }
 
 /* ===== Глобальный контейнер ===== */
