@@ -50,12 +50,16 @@ void CreateTables(pqxx::connection& sql){
     {
         pqxx::work txn(sql);
         constexpr auto create_index_username = "CREATE INDEX IF NOT EXISTS name_idx ON users (username);"_zv;
-        constexpr auto create_index_login = "CREATE INDEX IF NOT EXISTS name_idx ON users (login);"_zv;
         constexpr auto create_index_find_chat =
             "CREATE INDEX IF NOT EXISTS us_pair_idx ON chats (LEAST(user1_id, user2_id), GREATEST(user1_id, user2_id));"_zv;
         constexpr auto create_index_chat_id = "CREATE INDEX IF NOT EXISTS messages_chat_id_idx ON messages(chat_id);"_zv;
         constexpr auto create_index_send_at = "CREATE INDEX IF NOT EXISTS messages_sand_at_idx ON messages(sender_id DESC);"_zv;
-        constexpr auto create_message_enum = "CREATE TYPE message_status AS ENUM ('sent', 'delivered');"_zv;
+        txn.exec(R"(
+            DO $$ BEGIN
+                CREATE TYPE message_status AS ENUM ('sent', 'delivered');
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$;
+        )"_zv);
         txn.exec(R"(
             CREATE TABLE IF NOT EXISTS users(
                 id SERIAL PRIMARY KEY,
@@ -76,8 +80,6 @@ void CreateTables(pqxx::connection& sql){
             );
         )"_zv);
 
-        txn.exec(create_message_enum);
-        
         txn.exec(R"(
             CREATE TABLE IF NOT EXISTS messages(
                 id SERIAL PRIMARY KEY,
@@ -99,7 +101,6 @@ void CreateTables(pqxx::connection& sql){
         txn.exec(create_index_send_at);
         txn.exec(create_index_find_chat);
         txn.exec(create_index_username);
-        txn.exec(create_index_login);
         txn.commit();
         obj["data"] = "createTable";
         obj["message"] = "Tables created seccessfully";

@@ -76,6 +76,7 @@ private:
         boost::json::object resp;
         resp["token"] = token;
         resp["user_id"] = std::to_string(users_.FindUserByLogin(login)->GetId());
+        resp["username"] = users_.FindUserByLogin(login)->GetUserName();
         LogHandler(200, "Register"s, "User is registered"s);
         return response(http::status::ok, json::serialize(resp));
     }
@@ -120,6 +121,7 @@ private:
         users_.UpdateUserToken(user->GetId(), token);
         resp["token"] = token;
         resp["user_id"] = std::to_string(user->GetId());
+        resp["username"] = user->GetUserName();
         LogHandler(200, "Auth"s, "User is autorized"s);
         return response(http::status::ok, json::serialize(resp));
     }
@@ -154,6 +156,9 @@ private:
                 o_chat["id"] = chat.id;
                 o_chat["user1_id"] = chat.user1_id;
                 o_chat["user2_id"] = chat.user2_id;
+                o_chat["recip_username"] = (user_id == chat.user1_id) ? users_.FindUserById(chat.user2_id)->GetUserName() : users_.FindUserById(chat.user1_id)->GetUserName();
+                auto msg = chat_manager_.GetMessages(chat.user1_id, chat.id, 1);
+                o_chat["last_msg"] = msg.size() != 0 ? msg[0].text : " ";
                 o_chat["create_timestamp"] = chat.create_chat_time;
                 res_arr.push_back(std::move(o_chat));
             }

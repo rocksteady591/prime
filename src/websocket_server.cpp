@@ -4,6 +4,7 @@
 #include <boost/asio/ssl/stream_base.hpp>
 #include <boost/asio/ssl/verify_mode.hpp>
 #include <boost/beast/core.hpp>
+#include <boost/beast/core/buffers_to_string.hpp>
 #include <boost/beast/core/error.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/http/field.hpp>
@@ -24,6 +25,7 @@
 #include <thread>
 #include <iostream>
 #include <iterator>
+#include <utility>
 #include <vector>
 #include <string>
 #include <cstdlib>
@@ -165,6 +167,11 @@ void Session::on_read(const beast::error_code& ec, std::size_t bytes_transfered)
         BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
             << logging::add_value("msg", "error reading" + ec.message());
         return;
+    }else {
+        json::object obj;
+        obj["info"] = "onReadMethod";
+        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+            << logging::add_value("msg", "onReadSuccess" + ec.message());
     }
 
     std::string token = extract_token_from_request(upgrade_req_);
@@ -283,9 +290,18 @@ void Session::key_exchange(const std::vector<unsigned char>& received_key) {
     BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj_log)
                             << logging::add_value("msg", "Sending public key to client...");
 
+    messenger::KeyExchange kx;
+    kx.set_publick_key(shared_pk->data(), shared_pk->size());
+    messenger::WriteMessage msg;
+    *msg.mutable_key_exchange() = kx;
+    
+    auto out = std::make_shared<std::string>();
+    msg.SerializeToString(out.get());
+
+
     // Отправляем ключ, и только после успешной отправки начинаем новое чтение
     ws_.async_write(
-        net::buffer(shared_pk->data(), shared_pk->size()),
+        net::buffer(*out),
         net::bind_executor(strand_, [self = shared_from_this(), shared_pk](beast::error_code ec, std::size_t bytes) {
             if (ec) {
                 json::object obj;
@@ -306,11 +322,11 @@ void Session::key_exchange(const std::vector<unsigned char>& received_key) {
 
 void Session::SendRaw(const std::string& raw_data) {
     net::post(strand_, [self = shared_from_this(), data = std::string(raw_data)](){
-        self->DoSendRaw(std::move(data));
+        self->DoSendRaw(data);
     });
 }
 
-void Session::DoSendRaw(std::string raw_data){
+void Session::DoSendRaw(const std::string& raw_data){
     auto raw_ptr = std::make_shared<std::string>(std::move(raw_data));
     ws_.async_write(net::buffer(*raw_ptr), net::bind_executor(strand_, [self = shared_from_this()](beast::error_code ec, std::size_t){
         if (ec) {
@@ -327,7 +343,7 @@ ChatManager& Server::GetManager(){
 }
 
 void Session::DoRead() {
-    ws_.async_read(buffer_, net::bind_executor(strand_, 
+    ws_.async_read(buffer_, net::bind_executor(strand_,
         [self = shared_from_this()](beast::error_code ec, std::size_t bytes_read) {
         if (ec) {
             json::object obj;
@@ -343,20 +359,33 @@ void Session::DoRead() {
 
         // Первый шаг: обмен ключами
         if (self->shared_secret_key_.empty()) {
-            std::vector<unsigned char> received_key(bytes_read);
-            net::buffer_copy(net::buffer(received_key.data(), received_key.size()),
-                self->buffer_.data());
-            self->key_exchange(received_key);
+            std::string data = beast::buffers_to_string(self->buffer_.data());
             self->buffer_.consume(bytes_read);
+
+            messenger::WriteMessage wm;
+            if (!wm.ParseFromString(data) || !wm.has_key_exchange() ||
+                wm.key_exchange().publick_key().size() != crypto_box_PUBLICKEYBYTES) {
+                BOOST_LOG_TRIVIAL(warning) << "first frame is not KeyExchange / bad size";
+                // закрыть соединение корректно
+                beast::error_code ignore;
+                self->ws_.close(websocket::close_code::protocol_error, ignore);
+                return;
+            }
+
+            std::vector<unsigned char> received_key(
+                wm.key_exchange().publick_key().begin(),
+                wm.key_exchange().publick_key().end());
+
+            self->key_exchange(received_key);
             return;
         }
         // Получаем данные из буфера
         std::string data = beast::buffers_to_string(self->buffer_.data());
         self->buffer_.consume(self->buffer_.size());
 
-        // Парсим SecureEnvelope
-        messenger::SecureEnvelope recieve_envelope;
-        if (!recieve_envelope.ParseFromString(data)) {
+        messenger::WriteMessage wm;
+        
+        if (!wm.ParseFromString(data)) {
             json::object obj;
             obj["Warning"] = "parseFailed";
             BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
@@ -364,113 +393,128 @@ void Session::DoRead() {
             self->DoRead();   // продолжаем чтение, не закрывая соединение
             return;
         }
+        
+        if(wm.has_chat_message()) {
+            // Парсим SecureEnvelope
+            
+            const messenger::SecureEnvelope& recieve_envelope = wm.chat_message();
+            const std::string& ciphertext = recieve_envelope.ciphertext();
+            const std::string& nonce = recieve_envelope.nonce();
+            std::string sender_id = recieve_envelope.sender_id();
+            std::string recipient_id = recieve_envelope.recipient_id();
 
-        const std::string& ciphertext = recieve_envelope.ciphertext();
-        const std::string& nonce = recieve_envelope.nonce();
-        std::string sender_id = recieve_envelope.sender_id();
-        std::string recipient_id = recieve_envelope.recipient_id();
-
-        // Проверка минимальной длины шифротекста
-        if (ciphertext.size() < crypto_box_MACBYTES) {
-            json::object obj;
-            obj["Warning"] = "shortText";
-            BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
-                << logging::add_value("msg", "Ciphertext too short"s);
-            self->DoRead();
-            return;
-        }
-        if (nonce.size() != crypto_box_NONCEBYTES) {
-            json::object obj;
-            obj["Warning"] = "invalidNonce";
-            BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
-                << logging::add_value("msg", "Invalid nonce size"s);
-            self->DoRead();
-            return;
-        }
-
-        // Расшифровка (только для валидации и получения sender_id)
-        std::vector<unsigned char> plaintext(ciphertext.size() - crypto_box_MACBYTES);
-        if (crypto_box_open_easy_afternm(
-            plaintext.data(),
-            reinterpret_cast<const unsigned char*>(ciphertext.data()),
-            ciphertext.size(),
-            reinterpret_cast<const unsigned char*>(nonce.data()),
-            self->shared_secret_key_.data()) != 0) {
-
-            json::object obj;
-            obj["Warning"] = "decryptFailed";
-            BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
-                << logging::add_value("msg", "Decryption failed"s);
-            self->DoRead();
-            return;
-        }
-        std::string message(plaintext.begin(), plaintext.end());
-        try {
-            int sender = std::stoi(sender_id);
-            int recip = std::stoi(recipient_id);
-            if(sender > recip){
-                std::swap(sender, recip);
+            // Проверка минимальной длины шифротекста
+            if (ciphertext.size() < crypto_box_MACBYTES) {
+                json::object obj;
+                obj["Warning"] = "shortText";
+                BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+                    << logging::add_value("msg", "Ciphertext too short"s);
+                self->DoRead();
+                return;
             }
-            //тут создается новый или возвращается уже существующий чат
-            //принимает айди отправителя и получателя
-            int chat_id = self->server_->GetManager().CreateOrGetChat(sender, recip);
-            self->server_->GetManager().AddMessage(std::stoi(sender_id), chat_id, message);
-            // Регистрируем сессию, если ещё не зарегистрирована
-            //if (self->user_id_.empty() && !sender_id.empty()) {
-            //    self->user_id_ = sender_id;
-            //    self->server_->RegisterSession(sender_id, self->shared_from_this());
-            //    json::object obj;
-            //    obj["userId"] = sender_id;
-            //    BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
-            //        << logging::add_value("msg", "Session registered"s);
-            //}
+            if (nonce.size() != crypto_box_NONCEBYTES) {
+                json::object obj;
+                obj["Warning"] = "invalidNonce";
+                BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+                    << logging::add_value("msg", "Invalid nonce size"s);
+                self->DoRead();
+                return;
+            }
 
-            // Пересылаем зашифрованное сообщение получателю
-            if (!recipient_id.empty()) {
-                auto target = self->server_->FindSession(recipient_id);
-                if (target) {
-                    net::dispatch(target->GetStrand(), [message = std::move(message), target, sender_id, recipient_id](){
-                        // Перешифровываем для получателя
-                        std::vector<unsigned char> new_nonce(crypto_box_NONCEBYTES);
-                        randombytes_buf(new_nonce.data(), new_nonce.size());
-                        std::vector<unsigned char> encrypted(message.size() + crypto_box_MACBYTES);
-                        crypto_box_easy_afternm(
-                            encrypted.data(),
-                            reinterpret_cast<const unsigned char*>(message.data()),
-                            message.size(),
-                            new_nonce.data(),
-                            target->shared_secret_key_.data());   // ключ получателя
+            // Расшифровка (только для валидации и получения sender_id)
+            std::vector<unsigned char> plaintext(ciphertext.size() - crypto_box_MACBYTES);
+            if (crypto_box_open_easy_afternm(
+                plaintext.data(),
+                reinterpret_cast<const unsigned char*>(ciphertext.data()),
+                ciphertext.size(),
+                reinterpret_cast<const unsigned char*>(nonce.data()),
+                self->shared_secret_key_.data()) != 0) {
 
-                        messenger::SecureEnvelope forward_env;
-                        forward_env.set_ciphertext(encrypted.data(), encrypted.size());
-                        forward_env.set_nonce(new_nonce.data(), new_nonce.size());
-                        forward_env.set_sender_id(sender_id);
-                        forward_env.set_recipient_id(recipient_id);
-                        std::string serialized;
-                        forward_env.SerializeToString(&serialized);
-                        target->SendRaw(serialized);
+                json::object obj;
+                obj["Warning"] = "decryptFailed";
+                BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+                    << logging::add_value("msg", "Decryption failed"s);
+                self->DoRead();
+                return;
+            }
+            std::string message(plaintext.begin(), plaintext.end());
+            std::cout << "Message: " << message << std::endl;
+            try {
+                int sender = std::stoi(sender_id);
+                int recip = std::stoi(recipient_id);
+                if(sender > recip){
+                    std::swap(sender, recip);
+                }
+                //тут создается новый или возвращается уже существующий чат
+                //принимает айди отправителя и получателя
+                int chat_id = self->server_->GetManager().CreateOrGetChat(sender, recip);
+                self->server_->GetManager().AddMessage(std::stoi(sender_id), chat_id, message);
+                // Пересылаем зашифрованное сообщение получателю
+                if (!recipient_id.empty()) {
+                    auto target = self->server_->FindSession(recipient_id);
+                    if (target) {
+                        net::dispatch(target->GetStrand(), [message = std::move(message), target, sender_id, recipient_id](){
+                            // Перешифровываем для получателя
+                            std::vector<unsigned char> new_nonce(crypto_box_NONCEBYTES);
+                            randombytes_buf(new_nonce.data(), new_nonce.size());
+                            std::vector<unsigned char> encrypted(message.size() + crypto_box_MACBYTES);
+                            crypto_box_easy_afternm(
+                                encrypted.data(),
+                                reinterpret_cast<const unsigned char*>(message.data()),
+                                message.size(),
+                                new_nonce.data(),
+                                target->shared_secret_key_.data());   // ключ получателя
+
+                            messenger::SecureEnvelope forward_env;
+                            forward_env.set_ciphertext(encrypted.data(), encrypted.size());
+                            forward_env.set_nonce(new_nonce.data(), new_nonce.size());
+                            forward_env.set_sender_id(sender_id);
+                            forward_env.set_recipient_id(recipient_id);
+                            messenger::WriteMessage wm;
+                            *wm.mutable_chat_message() = forward_env;
+                            std::string serialized;
+                            wm.SerializeToString(&serialized);
+                            target->SendRaw(serialized);
+                            json::object obj;
+                            obj["from"] = sender_id;
+                            obj["to"] = recipient_id;
+                            BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
+                                << logging::add_value("msg", "Message forwarded (re-encrypted)");
+                        });
+                    }
+                    else {
+                        // Получатель не в сети
                         json::object obj;
-                        obj["from"] = sender_id;
-                        obj["to"] = recipient_id;
-                        BOOST_LOG_TRIVIAL(info) << logging::add_value("data", obj)
-                            << logging::add_value("msg", "Message forwarded (re-encrypted)");
-                    });
+                        obj["recipient"] = recipient_id;
+                        BOOST_LOG_TRIVIAL(warning) << logging::add_value("data", obj)
+                            << logging::add_value("msg", "Recipient offline");
+                    }
                 }
-                else {
-                    // Получатель не в сети
-                    json::object obj;
-                    obj["recipient"] = recipient_id;
-                    BOOST_LOG_TRIVIAL(warning) << logging::add_value("data", obj)
-                        << logging::add_value("msg", "Recipient offline");
-                }
-            }
 
-            // Продолжаем чтение
-            self->DoRead();
-        } catch (...) {
-            self->DoRead();
-            return;
+                // Продолжаем чтение
+                self->DoRead();
+            } catch(const pqxx::sql_error& e)
+            {
+                json::object obj;
+                obj["code"] = e.what();
+                obj["message"] = e.query();
+                BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                    << logging::add_value("msg", "sql transaction error");
+            }catch(const pqxx::broken_connection& e){
+                json::object obj;
+                obj["code"] = e.what();
+                obj["message"] = e.query();
+                BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                    << logging::add_value("msg", "sql connection error");
+            }catch (const std::exception& e){
+                json::object obj;
+                obj["code"] = e.what();
+                obj["message"] = "another error";
+                BOOST_LOG_TRIVIAL(error) << logging::add_value("data", obj)
+                    << logging::add_value("msg", "another error");
+            }
         }
+        return;
         }
     ));
 }
@@ -624,14 +668,15 @@ void Session::SendOfflineMessages() {
             nonce.data(),
             shared_secret_key_.data());   // текущий shared key (клиента)
 
-        messenger::SecureEnvelope env;
-        env.set_ciphertext(encrypted.data(), encrypted.size());
-        env.set_nonce(nonce.data(), nonce.size());
-        env.set_sender_id(sender_id);
-        env.set_recipient_id(recipient_id);
+        messenger::WriteMessage wm;
+        auto* env = wm.mutable_chat_message();
+        env->set_ciphertext(encrypted.data(), encrypted.size());
+        env->set_nonce(nonce.data(), nonce.size());
+        env->set_sender_id(sender_id);
+        env->set_recipient_id(recipient_id);
 
         std::string serialized;
-        env.SerializeToString(&serialized);
+        wm.SerializeToString(&serialized);
         SendRaw(serialized);
 
         // Помечаем сообщение как доставленное

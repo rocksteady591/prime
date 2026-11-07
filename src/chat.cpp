@@ -2,6 +2,7 @@
 #include "connection_pool.h"
 #include <string>
 #include <utility>
+#include <iostream>
 #include <vector>
 
 using pqxx::operator""_zv;
@@ -9,6 +10,7 @@ using pqxx::operator""_zv;
 ChatManager::ChatManager(ConnectionPool& pool) : pool_(pool){}
 
 int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
+    std::cout << "Вошел в CreateOrGetChat" << std::endl;
     if(user1_id > user2_id){
         std::swap(user1_id, user2_id);
     }
@@ -34,6 +36,7 @@ int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
     );
     chat_id = result[0][0].as<int>();
     w.commit();
+    std::cout << "Вышел в CreateOrGetChat" << std::endl;
     return chat_id;
 }
 
@@ -59,8 +62,8 @@ std::vector<Message> ChatManager::GetMessages(int user_id, int chat_id, int limi
 
     // Проверка доступа
     auto check = r.exec(
-        "SELECT 1 FROM chats WHERE id = $1 AND (user1_id = $2 OR user2_id = $2)",
-        pqxx::params{chat_id, user_id});
+        "SELECT 1 FROM chats WHERE id = $1 AND (user1_id = $2 OR user2_id = $3)",
+        pqxx::params{chat_id, user_id, user_id});
     if (check.empty()) throw std::runtime_error("Access denied");
 
     auto result = r.exec(
@@ -102,7 +105,7 @@ void ChatManager::AddMessage(int sender_id, int chat_id, const std::string& mess
     pqxx::connection& conn = *wrapper;
     pqxx::work w(conn);
     w.exec(
-            "INSERT INTO messages (chat_id, sender_id, content, delivered) VALUES ($1, $2, $3, 'sent');",
+            "INSERT INTO messages (chat_id, sender_id, content, status) VALUES ($1, $2, $3, 'sent'::message_status);",
              pqxx::params{chat_id, sender_id, message});
     w.commit();
 }
@@ -114,11 +117,11 @@ std::vector<Message> ChatManager::GetUndeliveredMessages(int user_id) {
     // Находим все сообщения, где получатель = user_id (проверяем через чаты)
     auto result = r.exec(
         R"(
-            SELECT m.id, m.chat_id, m.sender_id, m.content, m.sent_at
+            SELECT m.id, m.chat_id, m.sender_id, m.content, m.sent_at::text
             FROM messages m
             JOIN chats c ON m.chat_id = c.id
             WHERE (c.user1_id = $1 OR c.user2_id = $1)
-              AND m.delivered = 'sent'
+              AND m.status = 'sent'::message_status
               AND m.sender_id != $1
             ORDER BY m.sent_at ASC
         )"_zv,
@@ -130,8 +133,7 @@ std::vector<Message> ChatManager::GetUndeliveredMessages(int user_id) {
             row[1].as<int>(),
             row[2].as<int>(),
             row[3].as<std::string>(),
-            row[4].as<std::string>(),
-            "sent"  // delivered = sent (пока)
+            row[4].as<std::string>()
         );
     }
     return msgs;
@@ -140,6 +142,7 @@ std::vector<Message> ChatManager::GetUndeliveredMessages(int user_id) {
 void ChatManager::MarkMessageDelivered(int msg_id) {
     auto wrapper = pool_.GetConnection();
     pqxx::work w(*wrapper);
-    w.exec("UPDATE messages SET delivered = $1 WHERE id = $2;", pqxx::params{"delivered",msg_id});
+    w.exec("UPDATE messages SET status = 'delivered'::message_status WHERE id = $1;",
+           pqxx::params{msg_id});
     w.commit();
 }
