@@ -33,7 +33,8 @@ add_library(common_objects OBJECT
     "src/connection_pool.h"
     "src/chat.cpp"
     "src/chat.h"
-        src/chat.cpp
+    "src/jwt_utils.cpp"
+    "src/jwt_utils.h"
 )
 
 target_include_directories(common_objects PRIVATE
@@ -90,6 +91,7 @@ add_executable(websocket_server
 target_include_directories(websocket_server PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/public/proto 
 )
 
 target_link_libraries(websocket_server

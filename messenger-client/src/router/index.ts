@@ -10,9 +10,9 @@ const routes = [
   { path: '/login', component: () => import('@/views/LoginView.vue') },
   { path: '/register', component: () => import('@/views/RegisterView.vue') },
   { path: '/chats', name: 'chats', component: ChatView, meta: { requiresAuth: true } },
-  { path: '/contacts', name: 'contacts', component: ContactsView },
-  { path: '/settings', name: 'settings', component: SettingsView },
-  { path: '/account', name: 'account', component: AccountView },
+  { path: '/contacts', name: 'contacts', component: ContactsView, meta: { requiresAuth: true } },
+  { path: '/settings', name: 'settings', component: SettingsView, meta: { requiresAuth: true } },
+  { path: '/account', name: 'account', component: AccountView, meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({

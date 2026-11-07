@@ -3,6 +3,8 @@
 #include <boost/asio/ssl/context.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/core/error.hpp>
+#include <boost/beast/core/tcp_stream.hpp>
+#include <boost/beast/ssl/ssl_stream.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <boost/json.hpp>
@@ -35,19 +37,24 @@ public:
     Session(tcp::socket&& socket, ssl::context& ctx, Server* server);
     ~Session();
     void Run();
+    void Close();
     void on_run();
     void on_handshake(beast::error_code ec);
     void SendRaw(const std::string& raw_data);
     void DoRead();
+    void SendOfflineMessages();
+    net::strand<net::io_context::executor_type>& GetStrand() {return strand_;}
 private:
     void key_exchange(const std::vector<unsigned char>& received_key);
     void on_read(const beast::error_code& ec, std::size_t bytes_transfered);
-    websocket::stream<ssl::stream<tcp::socket>> ws_;
+    void DoSendRaw(const std::string& raw_data);
+    websocket::stream<beast::ssl_stream<beast::tcp_stream>> ws_;
     beast::flat_buffer buffer_;
     std::vector<unsigned char> shared_secret_key_;
     std::vector<unsigned char> sk_;
     std::string user_id_;
     Server* server_;
+    net::strand<net::io_context::executor_type> strand_;
 private:
     beast::http::request<beast::http::string_body> upgrade_req_;
 };
@@ -61,6 +68,8 @@ public:
     std::shared_ptr<Session> FindSession(const std::string& user_id);
     Users& GetUsers();
     ChatManager& GetManager();
+    void SendOfflineMessages();
+    net::io_context& GetContext();
 private:
     unsigned short threads_count_;
     const unsigned short port_ = 9000;
