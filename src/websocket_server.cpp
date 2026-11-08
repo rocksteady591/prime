@@ -453,7 +453,7 @@ void Session::DoRead() {
                 if (!recipient_id.empty()) {
                     auto target = self->server_->FindSession(recipient_id);
                     if (target) {
-                        net::dispatch(target->GetStrand(), [message = std::move(message), target, sender_id, recipient_id](){
+                        net::dispatch(target->GetStrand(), [message = std::move(message), target, sender_id, recipient_id, chat_id](){
                             // Перешифровываем для получателя
                             std::vector<unsigned char> new_nonce(crypto_box_NONCEBYTES);
                             randombytes_buf(new_nonce.data(), new_nonce.size());
@@ -470,6 +470,7 @@ void Session::DoRead() {
                             forward_env.set_nonce(new_nonce.data(), new_nonce.size());
                             forward_env.set_sender_id(sender_id);
                             forward_env.set_recipient_id(recipient_id);
+                            forward_env.set_chat_id(chat_id);
                             messenger::WriteMessage wm;
                             *wm.mutable_chat_message() = forward_env;
                             std::string serialized;
