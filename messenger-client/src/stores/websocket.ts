@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef, readonly } from 'vue'
+import { ref, shallowRef } from 'vue'
 import { useAuthStore } from './auth'
 import { useChatsStore } from './chat'
 import { messenger } from '@/proto/message'
 import type { Message } from '@/types/message'
+import { getOutbox, removeFromOutbox } from '@/utils/outbox'
 import _sodium from 'libsodium-wrappers'
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
@@ -18,6 +19,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
   let myKeypair: { publicKey: Uint8Array; privateKey: Uint8Array } | null = null
   let cryptoReady = false
   let cryptoPromise: Promise<void> | null = null
+  let connectTimeout: ReturnType<typeof setTimeout> | null = null
+  let keyExchangeTimeout: ReturnType<typeof setTimeout> | null = null
+  let connectionGeneration = 0
+  let keyExchangeAttempts = 0
+  const MAX_ATTEMPTS = 3
 
   async function initCrypto() {
     if (cryptoReady) return
@@ -30,7 +36,24 @@ export const useWebSocketStore = defineStore('websocket', () => {
     return cryptoPromise
   }
 
+  function clearConnectTimeout() {
+    if (connectTimeout) {
+      clearTimeout(connectTimeout)
+      connectTimeout = null
+    }
+  }
+
+  function clearKeyExchangeTimeout() {
+    if (keyExchangeTimeout) {
+      clearTimeout(keyExchangeTimeout)
+      keyExchangeTimeout = null
+    }
+  }
+
   function disconnect() {
+    clearConnectTimeout()
+    clearKeyExchangeTimeout()
+    connectionGeneration++
     if (ws.value) {
       ws.value.close()
       ws.value = null
@@ -39,18 +62,83 @@ export const useWebSocketStore = defineStore('websocket', () => {
     status.value = 'disconnected'
   }
 
+  function sendPublicKey() {
+    if (!myKeypair || !ws.value || ws.value.readyState !== WebSocket.OPEN) return
+    console.log('Sending public key, attempt', keyExchangeAttempts + 1)
+    ws.value.send(myKeypair.publicKey as BufferSource)
+    keyExchangeAttempts++
+    clearKeyExchangeTimeout()
+    keyExchangeTimeout = setTimeout(() => {
+      if (!sharedKey && ws.value?.readyState === WebSocket.OPEN && keyExchangeAttempts < MAX_ATTEMPTS) {
+        sendPublicKey()
+      } else if (!sharedKey) {
+        console.error('Key exchange failed after', MAX_ATTEMPTS, 'attempts')
+        status.value = 'error'
+      }
+    }, 5000)
+  }
+
+  // ==========================================================
+  //  Автопереотправка «зависших» сообщений после реконнекта
+  // ==========================================================
+  function flushOutbox() {
+    const outbox = getOutbox()
+    for (const [chatId, list] of Object.entries(outbox)) {
+      for (const m of list) {
+        if (m.status !== 'error' && m.status !== 'pending') continue
+        const recipient = getRecipientIdFromChat(chatId)
+        if (!recipient) continue
+        // Обновим статус на pending и попробуем
+        chatsStore.updateMessageStatus(chatId, m.id!, 'pending')
+        const ok = sendMessage(recipient, m.text)
+        const next: Message['status'] = ok ? 'sent' : 'error'
+        chatsStore.updateMessageStatus(chatId, m.id!, next)
+        if (ok) {
+          // статус 'sent' - помечаем в outbox, чтобы не переотправлять
+          // (но не удаляем — удалим, когда придёт серверное эхо)
+          updateOutboxStatusLocal(chatId, m.id!, 'sent')
+        }
+      }
+    }
+  }
+
+  function updateOutboxStatusLocal(chatId: string, msgId: string, status: Message['status']) {
+    // лёгкий wrapper: не тянем лишний импорт
+    try {
+      const KEY = 'messenger_outbox'
+      const ob = JSON.parse(localStorage.getItem(KEY) || '{}')
+      const idx = (ob[chatId] || []).findIndex((m: Message) => m.id === msgId)
+      if (idx !== -1) {
+        ob[chatId][idx].status = status
+        localStorage.setItem(KEY, JSON.stringify(ob))
+      }
+    } catch { /* ignore */ }
+  }
+
+  function getRecipientIdFromChat(chatId: string): string | null {
+    const parts = chatId.split('_')
+    if (parts.length !== 3) return null
+    const [, a, b] = parts
+    if (!auth.userId) return null
+    return a === auth.userId ? b : a
+  }
+
   async function connect(token?: string) {
     await initCrypto()
     if (!myKeypair) {
+      console.error('Crypto not initialized')
       status.value = 'error'
       return
     }
 
     if (ws.value) {
+      connectionGeneration++
+      clearKeyExchangeTimeout()
       ws.value.close()
       ws.value = null
     }
 
+    clearConnectTimeout()
     sharedKey = null
     status.value = 'connecting'
 
@@ -60,35 +148,47 @@ export const useWebSocketStore = defineStore('websocket', () => {
       return
     }
 
-    const socket = new WebSocket(`ws://127.0.0.1:9000/ws?token=${useToken}`)
+    const socket = new WebSocket(`wss://127.0.0.1:9000/ws?token=${encodeURIComponent(useToken)}`)
+    const generation = ++connectionGeneration
     socket.binaryType = 'arraybuffer'
     ws.value = socket
 
     socket.onopen = () => {
+      if (generation !== connectionGeneration) return
+      console.log('WebSocket open, readyState:', socket.readyState)
+      clearConnectTimeout()
       if (myKeypair) {
-        socket.send(myKeypair.publicKey as BufferSource)
+        keyExchangeAttempts = 0
+        sendPublicKey()
+      } else {
+        status.value = 'error'
       }
     }
 
     socket.onmessage = async (event) => {
+      if (generation !== connectionGeneration) return
       if (!(event.data instanceof ArrayBuffer)) return
       const data = new Uint8Array(event.data)
 
+      // ---- 1) Key exchange ----
       if (!sharedKey) {
-        const expectedLen = _sodium.crypto_box_PUBLICKEYBYTES
-        if (data.length !== expectedLen) return
+        if (data.length !== _sodium.crypto_box_PUBLICKEYBYTES) return
         try {
           sharedKey = _sodium.crypto_box_beforenm(data, myKeypair!.privateKey)
           status.value = 'connected'
-          // НЕ отправляем ping
+          clearConnectTimeout()
+          clearKeyExchangeTimeout()
+          // Реконнект завершён → пробуем отправить застрявшие
+          flushOutbox()
         } catch (e) {
+          console.error('Shared key computation failed', e)
           status.value = 'error'
         }
         return
       }
 
+      // ---- 2) Decrypt ----
       try {
-        console.log('Received message, length:', data.length)
         const envelope = messenger.SecureEnvelope.decode(data)
         const ciphertext = envelope.ciphertext as Uint8Array
         const nonce = envelope.nonce as Uint8Array
@@ -97,19 +197,53 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
         const decrypted = _sodium.crypto_box_open_easy_afternm(ciphertext, nonce, sharedKey)
         const text = new TextDecoder().decode(decrypted)
-        console.log('Decrypted message:', text, 'sender:', sender, 'recipient:', recipient)
+
+        const chatId = getChatId(sender, recipient)
+        const isMine = sender === auth.userId
+
+        // ==========================================================
+        //  3a) ЭХО нашего же сообщения - реконсиляция
+        // ==========================================================
+        if (isMine) {
+          const list = chatsStore.messagesMap[chatId] || []
+          const now = Date.now()
+          const idx = list.findIndex(m =>
+            (m.status === 'pending' || m.status === 'sent' || m.status === 'error') &&
+            m.text === text &&
+            Math.abs(m.timestamp - now) < 60_000,
+          )
+          if (idx !== -1) {
+            const prev = list[idx]
+            chatsStore.updateMessageStatus(chatId, prev.id!, 'delivered')
+            removeFromOutbox(chatId, prev.id!)
+          }
+          return
+        }
+
+        // ==========================================================
+        //  3b) Входящее
+        // ==========================================================
         const msg: Message = {
           sender,
           text,
           timestamp: Date.now(),
           recipient,
+          status: 'delivered',
         }
 
-        const chatId = getChatId(sender, recipient)
         chatsStore.addMessage(chatId, msg)
+
         if (!chatsStore.chatList.find(c => c.id === chatId)) {
-          const otherId = sender === auth.userId ? recipient : sender
+          const otherId = sender
           chatsStore.addChat(chatId, `User ${otherId}`)
+          // асинхронно синхронизируемся со списком с сервера
+          chatsStore.loadChats().catch(() => {})
+        }
+
+        // В фоновом режиме (чат не активен) — инкремент unread
+        if (chatsStore.activeChatId !== chatId) {
+          const chat = chatsStore.chatList.find(c => c.id === chatId)
+          if (chat) chat.unread = (chat.unread || 0) + 1
         }
       } catch (err) {
         console.error('Decryption error', err)
@@ -117,33 +251,31 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
 
     socket.onerror = (err) => {
+      if (generation !== connectionGeneration) return
       console.error('WebSocket error:', err)
     }
 
-    let reconnectAttempts = 0
-    const MAX_RECONNECT = 5
     socket.onclose = (event) => {
+      if (generation !== connectionGeneration) return
       console.log(`WebSocket closed: code ${event.code}, reason: ${event.reason}`)
-      if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT) {
-        reconnectAttempts++
-        setTimeout(() => connect(useToken), 3000 * reconnectAttempts)
-      } else {
-        status.value = 'error'
-      }
+      clearConnectTimeout()
+      clearKeyExchangeTimeout()
+      status.value = event.code === 1000 ? 'disconnected' : 'error'
+      ws.value = null
+      sharedKey = null
     }
   }
 
   function sendMessage(recipientId: string, text: string): boolean {
-    console.log('sendMessage called', { recipientId, text, sharedKey: !!sharedKey, wsReady: ws.value?.readyState === WebSocket.OPEN })
     if (!sharedKey || !ws.value || ws.value.readyState !== WebSocket.OPEN) {
-        console.warn('Cannot send: missing sharedKey or ws not open')
-        return false
+      console.warn('Cannot send: missing sharedKey or ws not open')
+      return false
     }
     const nonce = _sodium.randombytes_buf(_sodium.crypto_box_NONCEBYTES)
     const ciphertext = _sodium.crypto_box_easy_afternm(
       new TextEncoder().encode(text),
       nonce,
-      sharedKey
+      sharedKey,
     )
     const envelope = messenger.SecureEnvelope.create({
       ciphertext,
@@ -161,11 +293,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
     return `chat_${ids[0]}_${ids[1]}`
   }
 
-  // Инициализация криптографии
   initCrypto()
 
   return {
-    status,  
+    status,
     connect,
     disconnect,
     sendMessage,

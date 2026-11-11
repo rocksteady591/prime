@@ -1,23 +1,70 @@
 <template>
-  <div :class="['message-row', isOutgoing ? 'outgoing' : 'incoming']">
+  <div :class="['message-row', isOutgoing ? 'outgoing' : 'incoming']" :data-msg-id="msgId">
     <Avatar v-if="!isOutgoing" icon="pi pi-user" size="normal" shape="circle" class="avatar" />
     <div :class="['bubble', isOutgoing ? 'outgoing' : 'incoming']">
       <div class="sender-name" v-if="!isOutgoing">{{ sender }}</div>
+      <div v-if="attachments?.length" class="att-grid" :class="{ single: attachments.length === 1 }">
+        <template v-for="att in attachments" :key="att.id">
+          <a
+            v-if="att.preview"
+            :href="att.url"
+            target="_blank"
+            rel="noopener"
+            class="att-img"
+          >
+            <img :src="att.preview" :alt="att.name" />
+          </a>
+          <a
+            v-else
+            :href="att.url"
+            target="_blank"
+            rel="noopener"
+            class="att-file"
+          >
+            <i class="pi pi-file" />
+            <span>{{ att.name }}</span>
+          </a>
+        </template>
+      </div>
       <div class="text">{{ text }}</div>
       <div class="time">{{ formatTime(timestamp) }}</div>
+      <span v-if="isOutgoing" class="status-indicator">
+          <i v-if="status === 'pending'" class="pi pi-spin pi-spinner" />
+          <i v-else-if="status === 'sent'" class="pi pi-check" />
+          <i v-else-if="status === 'delivered'" class="pi pi-check-circle" />
+          <i v-else-if="status === 'error'" class="pi pi-exclamation-circle" style="color: var(--danger);" />
+      </span>
+      <Button
+          v-if="isOutgoing && status === 'error'"
+          icon="pi pi-refresh"
+          size="small"
+          text
+          severity="danger"
+          @click="emit('resend', msgId)"
+          class="resend-btn"
+        />
     </div>
     <Avatar v-if="isOutgoing" icon="pi pi-user" size="normal" shape="circle" class="avatar" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { Attachment } from '@/types/message';
 import Avatar from 'primevue/avatar'
+import Button from 'primevue/button'
 
-defineProps<{
+const props = defineProps<{
+  msgId: string
   text: string
   sender: string
   isOutgoing: boolean
   timestamp: number
+  status?: 'pending' | 'sent' | 'delivered' | 'error'
+  attachments?: readonly Attachment[]
+}>()
+
+const emit = defineEmits<{
+  (e: 'resend', msgId: string): void
 }>()
 
 function formatTime(ts: number) {
@@ -26,6 +73,29 @@ function formatTime(ts: number) {
 </script>
 
 <style scoped>
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+.time {
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+.status-indicator {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.outgoing .status-indicator {
+  color: rgba(255,255,255,0.8);
+}
+.resend-btn {
+  padding: 0;
+  font-size: 0.7rem;
+}
+
 .message-row {
   display: flex;
   align-items: flex-end;
@@ -91,6 +161,45 @@ function formatTime(ts: number) {
 
 .outgoing .time {
   color: rgba(255, 255, 255, 0.8);
+}
+
+.att-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+  max-width: 320px;
+}
+.att-grid.single { grid-template-columns: 1fr; }
+.att-img {
+  display: block;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  aspect-ratio: 1;
+}
+.att-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-base);
+}
+.att-img:hover img { transform: scale(1.03); }
+.att-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.att-file i { font-size: 1rem; opacity: 0.7; }
+.att-file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 480px) {

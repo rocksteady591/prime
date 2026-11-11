@@ -14,4 +14,6 @@ rust_scr/
 /compile_comands.json
 compile_commands.json
 .DS_Store
-.DS_Store
+messenger-client/.vite/deps/
+/.xmake
+.clangd

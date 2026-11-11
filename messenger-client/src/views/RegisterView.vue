@@ -45,6 +45,7 @@
     import Password from 'primevue/password'
     import Button from 'primevue/button'
     import Toast from 'primevue/toast'
+import { apiFetch } from '@/utils/api'
 
     const login = ref('')
     const password = ref('')
@@ -77,16 +78,16 @@
     .map(b => b.toString(16).padStart(2, '0'))
     .join('')
 
-    const response = await fetch('/api/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-    login: login.value.trim(),
-    password_hash: hashHex
-    })
+    const response = await apiFetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            login: login.value.trim(),
+            password: password.value  
+        })
     })
 
-    const data = await response.json()
+    const data = response.data
     if (!response.ok) {
     throw new Error(data.error || 'Ошибка регистрации')
     }

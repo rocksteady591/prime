@@ -2,6 +2,7 @@
 #include "connection_pool.h"
 #include <string>
 #include <utility>
+#include <iostream>
 #include <vector>
 
 using pqxx::operator""_zv;
@@ -9,6 +10,7 @@ using pqxx::operator""_zv;
 ChatManager::ChatManager(ConnectionPool& pool) : pool_(pool){}
 
 int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
+    std::cout << "Вошел в CreateOrGetChat" << std::endl;
     if(user1_id > user2_id){
         std::swap(user1_id, user2_id);
     }
@@ -16,7 +18,7 @@ int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
     pqxx::connection& conn = *wrapper;
     pqxx::work w(conn);
     int chat_id = 0;
-    auto result = w.exec_params(
+    auto result = w.exec(
     R"(
         WITH inserted AS (
             INSERT INTO chats (user1_id, user2_id)
@@ -30,10 +32,11 @@ int ChatManager::CreateOrGetChat(int user1_id, int user2_id){
         WHERE user1_id = $1 AND user2_id = $2
         LIMIT 1;
     )"_zv,
-    user1_id, user2_id
+    pqxx::params{user1_id, user2_id}
     );
     chat_id = result[0][0].as<int>();
     w.commit();
+    std::cout << "Вышел в CreateOrGetChat" << std::endl;
     return chat_id;
 }
 
@@ -42,7 +45,7 @@ std::vector<ContactInfo> ChatManager::GetContacts(int user_id){
     constexpr auto query = "SELECT u.username, u.login FROM users u JOIN contacts c ON c.contact_id = u.id WHERE c.user_id = $1;"_zv;
     auto wrapper = pool_.GetConnection();
     pqxx::read_transaction r(*wrapper);
-    auto result = r.exec(query, user_id);
+    auto result = r.exec(query, pqxx::params{user_id});
     contacts.reserve(result.size());
     for(const auto& row : result){
         std::string username = row[0].as<std::string>();
@@ -52,21 +55,29 @@ std::vector<ContactInfo> ChatManager::GetContacts(int user_id){
     return contacts;
 }
 
-std::vector<Message> ChatManager::GetMessages(int chat_id, int messages_count, int offset){
+std::vector<Message> ChatManager::GetMessages(int user_id, int chat_id, int limit, int offset){
     std::vector<Message> messages;
-    constexpr auto select_messages_query = "SELECT id, chat_id, sender_id, content, created_at FROM messages WHERE chat_id=$1 LIMIT $2 OFFSET $3;"_zv;
     auto wrapper = pool_.GetConnection();
-    pqxx::connection& conn = *wrapper;
-    pqxx::read_transaction r(conn);
-    pqxx::result result = r.exec_params(select_messages_query, chat_id, messages_count, offset);
+    pqxx::read_transaction r(*wrapper);
+
+    // Проверка доступа
+    auto check = r.exec(
+        "SELECT 1 FROM chats WHERE id = $1 AND (user1_id = $2 OR user2_id = $3)",
+        pqxx::params{chat_id, user_id, user_id});
+    if (check.empty()) throw std::runtime_error("Access denied");
+
+    auto result = r.exec(
+        "SELECT id, chat_id, sender_id, content, sent_at FROM messages WHERE chat_id=$1 ORDER BY sent_at DESC LIMIT $2 OFFSET $3",
+        pqxx::params{chat_id, limit, offset});
     messages.reserve(result.size());
-    for(const auto& row : result){
-        int id = row[0].as<int>();
-        int chat_id = row[1].as<int>();
-        int sender_id = row[2].as<int>();
-        std::string content(std::move(row[3].as<std::string>()));
-        std::string timestamp = row[4].as<std::string>();
-        messages.emplace_back(id, chat_id, sender_id, content, timestamp);
+    for (const auto& row : result) {
+        messages.emplace_back(
+            row[0].as<int>(),
+            row[1].as<int>(),
+            row[2].as<int>(),
+            row[3].as<std::string>(),
+            row[4].as<std::string>()
+        );
     }
     return messages;
 }
@@ -77,7 +88,7 @@ std::vector<ChatInfo> ChatManager::GetChats(int user_id){
     auto wrapper = pool_.GetConnection();
     pqxx::connection& conn = *wrapper;
     pqxx::read_transaction r(conn);
-    pqxx::result select_result = r.exec_params(query_select, user_id);
+    pqxx::result select_result = r.exec(query_select, pqxx::params{user_id});
     chats.reserve(select_result.size());
     for(const auto& row : select_result){
         int id = row[0].as<int>();
@@ -93,8 +104,45 @@ void ChatManager::AddMessage(int sender_id, int chat_id, const std::string& mess
     auto wrapper = pool_.GetConnection();
     pqxx::connection& conn = *wrapper;
     pqxx::work w(conn);
-    w.exec_params(
-            "INSERT INTO messages (chat_id, sender_id, content) VALUES ($1, $2, $3);",
-            chat_id, sender_id, message);
+    w.exec(
+            "INSERT INTO messages (chat_id, sender_id, content, status) VALUES ($1, $2, $3, 'sent'::message_status);",
+             pqxx::params{chat_id, sender_id, message});
+    w.commit();
+}
+
+std::vector<Message> ChatManager::GetUndeliveredMessages(int user_id) {
+    std::vector<Message> msgs;
+    auto wrapper = pool_.GetConnection();
+    pqxx::read_transaction r(*wrapper);
+    // Находим все сообщения, где получатель = user_id (проверяем через чаты)
+    auto result = r.exec(
+        R"(
+            SELECT m.id, m.chat_id, m.sender_id, m.content, m.sent_at::text
+            FROM messages m
+            JOIN chats c ON m.chat_id = c.id
+            WHERE (c.user1_id = $1 OR c.user2_id = $1)
+              AND m.status = 'sent'::message_status
+              AND m.sender_id != $1
+            ORDER BY m.sent_at ASC
+        )"_zv,
+        pqxx::params{user_id});
+    msgs.reserve(result.size());
+    for (const auto& row : result) {
+        msgs.emplace_back(
+            row[0].as<int>(),
+            row[1].as<int>(),
+            row[2].as<int>(),
+            row[3].as<std::string>(),
+            row[4].as<std::string>()
+        );
+    }
+    return msgs;
+}
+
+void ChatManager::MarkMessageDelivered(int msg_id) {
+    auto wrapper = pool_.GetConnection();
+    pqxx::work w(*wrapper);
+    w.exec("UPDATE messages SET status = 'delivered'::message_status WHERE id = $1;",
+           pqxx::params{msg_id});
     w.commit();
 }

@@ -1,11 +1,22 @@
+<!-- src/App.vue -->
 <template>
-  <div class="app-layout">
+  <div class="app-shell">
     <router-view />
     <Toast />
   </div>
 </template>
 
 <script setup lang="ts">
-import AppNavbar from './components/layout/AppNavbar.vue'
 import Toast from 'primevue/toast'
 </script>
+
+<style scoped>
+.app-shell {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-main);
+  font-family: var(--font-main);
+}
+</style>

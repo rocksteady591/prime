@@ -1,18 +1,134 @@
-// stores/chat.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useAuthStore } from './auth'
+import { apiFetch } from '@/utils/api'
+import { getOutbox, removeFromOutbox } from '@/utils/outbox'
+import type { Message } from '@/types/message'
 
-export interface Message {
-  sender: string
-  text: string
-  timestamp: number
-  // можно добавить id, но в WebSocket мы не получаем id сообщения
+type ChatListItem = {
+  id: string
+  name: string
+  unread?: number
+  raw?: { id: number; user1_id: number; user2_id: number; [k: string]: any }
 }
 
 export const useChatsStore = defineStore('chats', () => {
-  const chatList = ref<Array<{ id: string; name: string; unread?: number }>>([])
+  const auth = useAuthStore()
+  const chatList = ref<ChatListItem[]>([])
   const activeChatId = ref<string | null>(null)
   const messagesMap = ref<Record<string, Message[]>>({})
+  const loadingHistory = ref<Record<string, boolean>>({})
+
+  // чаты, для которых loadHistory вызвали ДО того, как chatList был готов
+  const pendingHistory = ref<Set<string>>(new Set())
+
+  // ==========================================================
+  //  Загрузка истории
+  //  - append=true  подгрузка вверх (пагинация)
+  //  - append=false  полная замена + сверка с outbox
+  // ==========================================================
+  async function loadHistory(
+    chatId: string,
+    limit = 50,
+    offset = 0,
+    append = false,          // ← вот он, параметр
+  ) {
+    const chat = chatList.value.find(c => c.id === chatId)
+    if (!chat) {
+      // chatList ещё не пришёл — запомним и загрузим после loadChats()
+      pendingHistory.value.add(chatId)
+      return
+    }
+    pendingHistory.value.delete(chatId)
+
+    const realChatId = chat.raw?.id
+    if (realChatId == null) {
+      console.warn('No raw chat id for', chatId)
+      return
+    }
+
+    loadingHistory.value[chatId] = true
+    try {
+      const res = await apiFetch('/api/get_messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: JSON.stringify({
+          chat_id: Number(realChatId),
+          count_messages: limit,
+          offset,
+        }),
+      })
+
+      if (!res.ok) {
+        throw new Error(res.data?.error || res.error || 'Failed to load messages')
+      }
+
+      const data = res.data || []
+      const msgs: Message[] = data.map((m: any) => ({
+        id: m.msg_id?.toString(),
+        sender: m.sender_id.toString(),
+        text: m.text,
+        timestamp: new Date(m.send_time).getTime(),
+        status: m.sender_id.toString() === auth.userId ? 'delivered' : undefined,
+      }))
+
+      if (append) {
+        messagesMap.value[chatId] = [
+          ...msgs,
+          ...(messagesMap.value[chatId] || []),
+        ]
+        return
+      }
+
+      // ---------- Полная замена + сверка с outbox ----------
+      const outbox = getOutbox()[chatId] || []
+      const serverKey = (m: Message) => `${m.sender}::${m.text}`
+      const serverSet = new Set(msgs.map(serverKey))
+      const extraFromOutbox: Message[] = []
+
+      for (const pending of outbox) {
+        if (serverSet.has(serverKey(pending))) {
+          removeFromOutbox(chatId, pending.id!)
+        } else {
+          // сервер не знает → показываем как error
+          extraFromOutbox.push({ ...pending, status: 'error' })
+        }
+      }
+
+      messagesMap.value[chatId] = [...msgs, ...extraFromOutbox]
+    } catch (e) {
+      console.error('Failed to load history', e)
+
+      //    вот здесь используется append — он в области видимости,
+      //    потому что это параметр этой же функции loadHistory
+      if (!append) {
+        const outbox = getOutbox()[chatId] || []
+        messagesMap.value[chatId] = outbox.map(m => ({
+          ...m,
+          status: 'error',              //  принудительно error при падении сети
+        }))
+      }
+    } finally {
+      loadingHistory.value[chatId] = false
+    }
+  }
+
+  function updateMessageStatus(
+    chatId: string,
+    msgId: string,
+    status: Message['status'],
+  ) {
+    const msgs = messagesMap.value[chatId]
+    if (!msgs) return
+    const idx = msgs.findIndex(m => m.id === msgId)
+    if (idx !== -1) {
+      msgs[idx] = { ...msgs[idx], status }
+      messagesMap.value[chatId] = [...msgs]
+    }
+  }
 
   const activeMessages = computed(() => {
     if (!activeChatId.value) return []
@@ -24,86 +140,69 @@ export const useChatsStore = defineStore('chats', () => {
     return chat?.name || 'Чат'
   })
 
-  // Загрузка списка чатов пользователя
-  async function loadChats(userId: number) {
+  async function loadChats() {
+    const userId = parseInt(auth.userId || '0')
+    if (!userId) return
+
     try {
-      const res = await fetch('/api/get_chats', {
+      const res = await apiFetch('/api/get_chats', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
+          Authorization: `Bearer ${auth.token}`,
         },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({}),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message || 'Failed to load chats')
-      // data: массив { id, user1_id, user2_id, create_timestamp }
-      const chats = data.map((c: any) => {
+
+      if (!res.ok) {
+        throw new Error(res.data?.message || res.error || 'Failed to load chats')
+      }
+
+      const data = res.data || []
+      const fromServer: ChatListItem[] = data.map((c: any) => {
         const otherId = c.user1_id === userId ? c.user2_id : c.user1_id
         return {
           id: `chat_${Math.min(c.user1_id, c.user2_id)}_${Math.max(c.user1_id, c.user2_id)}`,
-          name: `User ${otherId}`, // позже можно заменить на реальное имя через /api/find_user
+          name: `User ${otherId}`,
           raw: c,
         }
       })
-      chatList.value = chats
+
+      const localOnly = chatList.value.filter(
+        c => !fromServer.find(s => s.id === c.id),
+      )
+      chatList.value = [...fromServer, ...localOnly]
+
+      // Догружаем историю для тех, кто вызывал loadHistory до готовности chatList
+      for (const id of Array.from(pendingHistory.value)) {
+        if (chatList.value.find(c => c.id === id)) {
+          pendingHistory.value.delete(id)
+          loadHistory(id).catch(console.error)
+        }
+      }
     } catch (e) {
       console.error('Failed to load chats', e)
     }
   }
 
-  // Загрузка истории сообщений для конкретного чата
-  async function loadHistory(chatId: string, limit = 50, offset = 0) {
-    // Находим raw чат с реальным id из БД
-    const chat = chatList.value.find(c => c.id === chatId)
-    if (!chat) return
-    const realChatId = (chat as any).raw?.id
-    if (!realChatId) return
-
-    try {
-      const res = await fetch('/api/get_messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
-        },
-        body: JSON.stringify({
-          chat_id: realChatId,
-          count_messages: limit,
-          offset,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message || 'Failed to load messages')
-      // data: массив { msg_id, chat_id, sender_id, text, send_time }
-      const msgs = data.map((m: any) => ({
-        sender: m.sender_id.toString(),
-        text: m.text,
-        timestamp: new Date(m.send_time).getTime(),
-      }))
-      messagesMap.value[chatId] = msgs
-    } catch (e) {
-      console.error('Failed to load history', e)
-      messagesMap.value[chatId] = []
-    }
-  }
-
   function addMessage(chatId: string, msg: Message) {
-    if (!messagesMap.value[chatId]) {
-      messagesMap.value[chatId] = []
-    }
+    if (!messagesMap.value[chatId]) messagesMap.value[chatId] = []
     messagesMap.value[chatId].push(msg)
+    messagesMap.value[chatId] = [...messagesMap.value[chatId]]
   }
 
-  function addChat(chatId: string, name: string) {
-    if (!chatList.value.find(c => c.id === chatId)) {
-      chatList.value.push({ id: chatId, name })
+  function addChat(chatId: string, name: string, raw?: ChatListItem['raw']) {
+    const existing = chatList.value.find(c => c.id === chatId)
+    if (existing) {
+      if (raw) existing.raw = raw
+      return
     }
+    chatList.value.push({ id: chatId, name, raw })
   }
 
   function setActiveChat(id: string) {
     activeChatId.value = id
-    if (!messagesMap.value[id]) {
+    if (!messagesMap.value[id] || messagesMap.value[id].length === 0) {
       loadHistory(id)
     }
   }
@@ -115,9 +214,11 @@ export const useChatsStore = defineStore('chats', () => {
     activeMessages,
     activeChatName,
     loadChats,
-    loadHistory,
     addMessage,
     addChat,
     setActiveChat,
+    loadingHistory,
+    loadHistory,
+    updateMessageStatus,
   }
 })
